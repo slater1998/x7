@@ -16,23 +16,32 @@
  */
 package io.xream.x7.reyc.internal;
 
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerOpenException;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.retry.RetryRegistry;
 import io.vavr.control.Try;
-import io.xream.x7.reyc.BackendService;
+import io.xream.x7.api.BackendService;
+import io.xream.x7.common.util.ExceptionUtil;
+import io.xream.x7.common.util.StringUtil;
+import io.xream.x7.exception.BusyException;
+import io.xream.x7.exception.RemoteServiceException;
+import io.xream.x7.exception.ReyConnectException;
 import io.xream.x7.reyc.api.ReyTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.xream.x7.common.exception.BusyException;
-import io.xream.x7.common.exception.RemoteServiceException;
-import io.xream.x7.common.exception.ReyConnectException;
-import io.xream.x7.common.util.StringUtil;
 
 import java.util.function.Supplier;
 
+/**
+ *
+ *  wrapped resilience4j: Retry,CircuitBreaker</br>
+ *  Retry>CircuitBreaker>RateLimiter>Bulkhead  </br>
+ *  but connection problem will retry immediately
+ */
 public class R4JTemplate implements ReyTemplate {
 
     private static Logger logger = LoggerFactory.getLogger(ReyTemplate.class);
@@ -49,20 +58,23 @@ public class R4JTemplate implements ReyTemplate {
     }
 
     @Override
-    public String support(String circuitBreakerKey, boolean isRetry, BackendService backendService) {
+    public String support(String circuitBreakerKey, boolean isRetry, BackendService<String> backendService) {
 
         if (StringUtil.isNullOrEmpty(circuitBreakerKey)){
             circuitBreakerKey = "";
         }
 
-        final String backendName = circuitBreakerKey.equals("") ? "DEFAULT" : circuitBreakerKey;
+        final String backendName = circuitBreakerKey.equals("") ? "default" : circuitBreakerKey;
 
-        CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker(circuitBreakerKey);
+        CircuitBreakerConfig circuitBreakerConfig = circuitBreakerRegistry.getConfiguration(backendName).orElse(circuitBreakerRegistry.getDefaultConfig());
+
+        CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker(backendName,circuitBreakerConfig);
         Supplier<String> decoratedSupplier = CircuitBreaker
                 .decorateSupplier(circuitBreaker, backendService::handle);
 
         if (isRetry) {
-            Retry retry = retryRegistry.retry(circuitBreakerKey);
+            RetryConfig retryConfig = retryRegistry.getConfiguration(backendName).orElse(retryRegistry.getDefaultConfig());
+            Retry retry = retryRegistry.retry(backendName,retryConfig);
             if (retry != null) {
 
                 retry.getEventPublisher()
@@ -91,12 +103,13 @@ public class R4JTemplate implements ReyTemplate {
 
 
 
-    private String hanleException(Throwable e, String tag, BackendService backendService) {
+    private String hanleException(Throwable e, String tag, BackendService<String> backendService) {
 
-        if (e instanceof CircuitBreakerOpenException) {
-            if (logger.isErrorEnabled()) {
-                logger.error(tag + ": " + e.getMessage());
-            }
+        if (logger.isErrorEnabled()) {
+            logger.error(tag + ": " + e.getMessage());
+        }
+
+        if (e instanceof CallNotPermittedException) {
             Object obj = backendService.fallback();
             throw new BusyException(obj == null ? null : obj.toString());
         }
@@ -105,25 +118,18 @@ public class R4JTemplate implements ReyTemplate {
         if (str.contains("HttpHostConnectException")
                 || str.contains("ConnectTimeoutException")
                 || str.contains("ConnectException")
+                || str.contains("UnknownHostException")
+                || str.contains("IOException")
         ) {
-            if (logger.isErrorEnabled()) {
-                logger.error(tag + " : " + e.getMessage());
-            }
             Object obj = backendService.fallback();
             throw new ReyConnectException(tag + " : " + e.getMessage() + (obj == null ? "" : (" : " + obj.toString())));
         }
 
-        if (e instanceof RuntimeException) {
-            if (logger.isErrorEnabled()) {
-                logger.error(tag + " : " + e.getMessage());
-            }
-        }
-
-        throw new RuntimeException(tag + " : " + e.getMessage());
+        throw new RuntimeException(tag + " : " + ExceptionUtil.getMessage(e));
     }
 
 
-    private void handleRemoteException(String result,BackendService backendService) {
+    private void handleRemoteException(String result,BackendService<String> backendService) {
 
         if (result == null)
             return;

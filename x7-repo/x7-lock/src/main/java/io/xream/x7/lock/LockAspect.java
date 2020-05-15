@@ -17,6 +17,7 @@
 package io.xream.x7.lock;
 
 import io.xream.x7.common.util.ExceptionUtil;
+import io.xream.x7.common.util.KeyUtil;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -45,10 +46,12 @@ public class LockAspect {
         String key = KeyUtil.makeKey(prefix,suffix,condition,args);
         int interval = lock.interval();
         int timeout = lock.timeout();
+        boolean abortingIfNoLock = lock.abortingIfNoLock();
 
         return DistributionLock.by(key).lock(
                 interval,
                 timeout,
+                abortingIfNoLock,
                 task -> {
             Class returnType = ms.getReturnType();
             try {

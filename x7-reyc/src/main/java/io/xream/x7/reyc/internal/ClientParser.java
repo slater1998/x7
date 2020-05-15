@@ -16,14 +16,14 @@
  */
 package io.xream.x7.reyc.internal;
 
+import io.xream.x7.common.bean.KV;
 import io.xream.x7.reyc.ReyClient;
+import io.xream.x7.reyc.api.GroupRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
-import io.xream.x7.common.bean.KV;
-import io.xream.x7.common.util.StringUtil;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
@@ -33,13 +33,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 public class ClientParser {
 
     private static Logger logger = LoggerFactory.getLogger(ClientParser.class);
-
-    protected static Pattern pattern1 = Pattern.compile("\\$\\{[\\s\\S]*\\}");
 
     private final static Map<String, ClientParsed> map = new HashMap<>();
 
@@ -57,34 +54,13 @@ public class ClientParser {
         ReyClient reyClient = (ReyClient) reyClientAnno;
 
         String url = reyClient.value();
-
-        {
-            if (StringUtil.isNotNull(url)) {
-                if (url.contains("$")) {
-                    List<String> regxList = StringUtil.listByRegEx(url, pattern1);
-                    if (regxList != null && !regxList.isEmpty()) {
-                        String regx = regxList.get(0);
-                        String key = regx.replace("${", "").replace("}", "");
-                        String value = environment.getProperty(key);
-
-                        if (value == null) {
-                            logger.info("ReyClient Fatal Error, Can't find the config of key: '" + key +"', App will shutdown");
-                            logger.error("ReyClient Fatal Error, Can't find the config of key: '" + key +"', App will shutdown");
-                            System.exit(0);
-                        }
-
-                        url = url.replace(regx, value);
-                    }
-                }
-            }
-        }
+        url = environment.resolvePlaceholders(url);
 
         ClientParsed parsed = new ClientParsed();
-
-        map.put(clz.getName(),parsed);
-
         parsed.setObjectType(clz);
         parsed.setUrl(url);
+
+        map.put(clz.getName(),parsed);
 
 
         /*
@@ -103,6 +79,18 @@ public class ClientParser {
             }
         }
 
+        /*
+         * groupRouter
+         */
+        Class<? extends GroupRouter> groupRouterClz = reyClient.groupRouter();
+        if (groupRouterClz != GroupRouter.class) {
+            try{
+                parsed.setGroupRouter(groupRouterClz.newInstance());
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+
         Method[] arr = clz.getDeclaredMethods();
 
         for (Method method : arr) {
@@ -112,14 +100,12 @@ public class ClientParser {
 
             Annotation mappingAnno = method.getAnnotation(RequestMapping.class);
             if (mappingAnno == null) {
-                logger.info(clz.getName() + "." + methodName + ", Not Found Annotation: " + RequestMapping.class.getName());
                 logger.error(clz.getName() + "." + methodName + ", Not Found Annotation: " + RequestMapping.class.getName());
                 System.exit(0);
             }
 
             RequestMapping requestMapping = (RequestMapping) mappingAnno;
             if (requestMapping.value() == null || requestMapping.value().length ==0) {
-                logger.info(clz.getName() + "." + methodName + " RequestMapping, no mapping value");
                 logger.error(clz.getName() + "." + methodName + " RequestMapping, no mapping value");
                 System.exit(0);
             }
@@ -162,8 +148,6 @@ public class ClientParser {
                 ParameterizedType pt = (ParameterizedType)gt;
                 Type t = pt.getActualTypeArguments()[0];
                 if (t instanceof ParameterizedType) {
-                    logger.info("ReyClient not support complex genericReturnType, like List<List<?>>, or" +
-                            "List<Map>，while parsing " + method);
                     logger.error("ReyClient not support complex genericReturnType, like List<List<?>>, or" +
                             "List<Map>，while parsing " + method);
                     System.exit(0);
@@ -182,7 +166,5 @@ public class ClientParser {
         }
 
     }
-
-
 
 }

@@ -44,7 +44,7 @@ public class HealthChecker {
     public static void onStarted() {
 
         for (BaseRepository repository : repositoryList) {
-            logger.info("Parsing " + repository.getClz());
+            logger.info("Parsing {}" ,repository.getClz());
             Parser.get(repository.getClz());
         }
 
@@ -72,7 +72,7 @@ public class HealthChecker {
                 String createSql = MapperFactory.tryToCreate(clz);
                 String test = MapperFactory.getSql(clz, Mapper.CREATE);
                 if (StringUtil.isNullOrEmpty(test)) {
-                    logger.info("FAILED TO START jdbc-template-plus, check Bean: " + clz);
+                    logger.info("Failed to start x7-jdbc-template-plus, check Bean: {}",clz);
                     System.exit(1);
                 }
 
@@ -98,11 +98,10 @@ public class HealthChecker {
 
             } catch (Exception e) {
                 flag |= true;
-//					e.printStackTrace();
             }
         }
 
-        logger.info("X7 Repository " + (flag ? "still " : "") + "started" + (flag ? " OK, wtih some problem" : ""));
+        logger.info("x7-repo/x7-jdbc-template-plus " + (flag ? "still " : "") + "started" + (flag ? " OK, wtih some problem" : ""));
 
     }
 }

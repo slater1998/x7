@@ -17,9 +17,10 @@
 package io.xream.x7.cache;
 
 import com.alibaba.fastjson.JSON;
-import io.xream.x7.common.repository.CacheableL3;
+import io.xream.x7.common.cache.CacheableL3;
 import io.xream.x7.common.util.ExceptionUtil;
 import io.xream.x7.common.util.JsonX;
+import io.xream.x7.common.util.KeyUtil;
 import io.xream.x7.common.util.StringUtil;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -86,7 +87,7 @@ public class L3CacheAspect {
         this.resolver = resolver;
     }
 
-    @Pointcut("@annotation(io.xream.x7.common.repository.CacheableL3))")
+    @Pointcut("@annotation(io.xream.x7.common.cache.CacheableL3))")
     public void cut() {
 
     }
@@ -108,7 +109,14 @@ public class L3CacheAspect {
         }
 
         Object[] argArr = proceedingJoinPoint.getArgs();
-        String key = argsToString.get(methodName, argArr);
+
+        String key = "";
+        String condition = cacheableL3.condition();
+        if (StringUtil.isNullOrEmpty(condition)) {
+            key = argsToString.get(methodName, argArr);
+        }else {
+            key = KeyUtil.makeKey(methodName,"~L3Cache", condition, argArr);
+        }
         long expireTime = cacheableL3.expireTime();
         TimeUnit timeUnit = cacheableL3.timeUnit();
 

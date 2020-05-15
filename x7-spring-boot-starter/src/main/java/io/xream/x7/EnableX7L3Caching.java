@@ -31,5 +31,7 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 @Documented
-@Import({L3CacheAspect.class})
-public @interface EnableX7L3Caching { }
+@Import({L3CacheStarter.class,L3CacheAspect.class})
+public @interface EnableX7L3Caching {
+    int waitTimeMills() default 300;
+}

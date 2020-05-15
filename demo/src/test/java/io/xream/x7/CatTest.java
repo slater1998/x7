@@ -39,10 +39,10 @@ public class CatTest {
 
     public void refreshByCondition(){
 
-        RefreshCondition refreshCondition = new RefreshCondition();
+        RefreshCondition refreshCondition = RefreshCondition.build();
         refreshCondition.refresh("type","TEST_X");
 //        refreshCondition.and().eq("id",1213);
-        refreshCondition.and().eq("test",433);
+        refreshCondition.eq("test",433);
 
         this.repository.refreshUnSafe(refreshCondition);
 
@@ -80,7 +80,7 @@ public class CatTest {
     public List<Cat> in(){
         List<Long> inList = new ArrayList<>();
         inList.add(3L);
-        InCondition inCondition = new InCondition("dogId", inList);
+        InCondition inCondition = InCondition.wrap("dogId", inList);
         List<Cat> list = this.repository.in(inCondition);
         System.out.println(list);
         return list;

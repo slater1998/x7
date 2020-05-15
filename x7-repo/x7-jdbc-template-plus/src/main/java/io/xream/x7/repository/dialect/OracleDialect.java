@@ -19,9 +19,11 @@ package io.xream.x7.repository.dialect;
 import io.xream.x7.common.bean.BeanElement;
 import io.xream.x7.common.bean.Criteria;
 import io.xream.x7.common.bean.SqlScript;
+import io.xream.x7.common.util.BeanUtil;
 import io.xream.x7.common.util.ExceptionUtil;
 import io.xream.x7.common.util.JsonX;
 import io.xream.x7.common.util.StringUtil;
+import io.xream.x7.repository.exception.NotSupportedException;
 import io.xream.x7.repository.mapper.Dialect;
 
 import java.io.Reader;
@@ -166,12 +168,17 @@ public class OracleDialect implements Dialect {
             Timestamp ts = (Timestamp) obj;
             return new Date(ts.getTime());
         }
-        if (ec.isEnum()) {
+        if (BeanUtil.isEnum(ec)) {
             return Enum.valueOf(ec, obj.toString());
         }
 
         return obj;
 
+    }
+
+    @Override
+    public String createOrReplaceSql(String sql) {
+        throw new NotSupportedException("x7/x7-repor/x7-jdbc-template-plus not support createOrReplace() for Oracle");
     }
 
     @Override
@@ -225,7 +232,7 @@ public class OracleDialect implements Dialect {
             Boolean b = (Boolean) value;
             return b.booleanValue() == true ? 1 : 0;
         }
-        if (Objects.nonNull(value) && value.getClass().isEnum())
+        if (Objects.nonNull(value) && BeanUtil.isEnum(value.getClass()))
             return ((Enum) value).name();
         return value;
     }

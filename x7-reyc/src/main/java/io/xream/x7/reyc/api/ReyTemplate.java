@@ -16,9 +16,9 @@
  */
 package io.xream.x7.reyc.api;
 
-import io.xream.x7.reyc.BackendService;
+import io.xream.x7.api.BackendService;
 
 public interface ReyTemplate {
 
-    String support(String circuitBreakerKey, boolean isRetry, BackendService service);
+    String support(String circuitBreakerKey, boolean isRetry, BackendService<String> service);
 }

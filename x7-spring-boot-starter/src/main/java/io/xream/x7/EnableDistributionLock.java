@@ -22,7 +22,7 @@ import io.xream.x7.lock.LockAspect;
 import java.lang.annotation.*;
 
 /**
- * @Lock
+ * start: @EnableDistributionLock
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)

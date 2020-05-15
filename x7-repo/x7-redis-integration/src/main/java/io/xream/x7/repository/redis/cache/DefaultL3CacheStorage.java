@@ -17,28 +17,60 @@
 package io.xream.x7.repository.redis.cache;
 
 import io.xream.x7.cache.L3CacheStorage;
+import io.xream.x7.common.cache.Protection;
 import io.xream.x7.common.util.StringUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import javax.validation.constraints.NotNull;
 import java.util.Map;
 import java.util.concurrent.*;
 
 @Component
-public class DefaultL3CacheStorage implements L3CacheStorage {
+public final class DefaultL3CacheStorage implements L3CacheStorage {
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    private L3CacheStorage fallbackStorage;
+
+    @Value("${circuitbreaker.l3cache.name:l3cache}")
+    private String circuitBreakerL3cacheName;
+
+    @Override
+    public void setFallbackStorage(L3CacheStorage fallbackStorage) {
+        this.fallbackStorage = fallbackStorage;
+    }
 
     public void setStringRedisTemplate(StringRedisTemplate stringRedisTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
     @Override
+    public boolean lock(String key, @NotNull Integer timeOut) {
+        if (timeOut.intValue() == 0)
+            timeOut = 60000;
+        try {
+            return this.stringRedisTemplate.opsForValue().setIfAbsent(key, "1", timeOut, TimeUnit.MILLISECONDS);
+        }catch (Exception e) {
+            return true;
+        }
+    }
+
+    @Override
+    public void unLock(String key) {
+        try {
+            this.stringRedisTemplate.delete(key);
+        }catch (Exception e){
+        }
+    }
+
+    @Override
     public void set(String key, String value, long expireTime, TimeUnit timeUnit) {
         
-        value = (value == null ? DEFAULT_VALUE : value);
+        value = (value == null ? Protection.DEFAULT_VALUE : value);
 
         PluginL1.putBeforeL3(key,value,expireTime,timeUnit);
 

@@ -13,14 +13,15 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 @SpringBootApplication
 @EnableTransactionManagement
 @EnableReadOnly
-//@EnableX7L2Caching(timeSeconds = 120)
+@EnableX7L2Caching(timeSeconds = 120)
 @EnableX7Repository(mappingPrefix = "t_",mappingSpec = "_")
 @EnableReyClient
 @EnableTracingServlet
-@EnableCorsConfig
 @EnableDateToLongForJackson
-//@EnableX7L3Caching
+@EnableX7L3Caching(waitTimeMills = 1000)
 @EnableDistributionLock
+@EnableFallbackOnly
+@EnableCorsConfig("${access.domain}")
 public class App {
 
     public static void main( String[] args )

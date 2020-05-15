@@ -19,9 +19,9 @@ package io.xream.x7.repository.mapper;
 import io.xream.x7.common.bean.BeanElement;
 import io.xream.x7.common.bean.Parsed;
 import io.xream.x7.common.bean.Parser;
-import io.xream.x7.common.config.ConfigAdapter;
 import io.xream.x7.common.repository.X;
 import io.xream.x7.common.util.BeanUtil;
+import io.xream.x7.common.util.LoggerProxy;
 import io.xream.x7.repository.DbType;
 import io.xream.x7.repository.Mapped;
 import io.xream.x7.repository.util.SqlParserUtil;
@@ -37,14 +37,6 @@ public class MapperFactory implements Mapper {
 
 	public static Dialect Dialect;
 
-	public static Map<String, String> getSqlMap(Class clzz) {
-		return sqlsMap.get(clzz);
-	}
-
-	public static void putSqlMap(Class clzz, Map<String, String> map) {
-		sqlsMap.put(clzz, map);
-	}
-
 	/**
 	 * 返回SQL
 	 * 
@@ -53,7 +45,6 @@ public class MapperFactory implements Mapper {
 	 * @param type
 	 *            (BeanMapper.CREATE|BeanMapper.REFRESH|BeanMapper.DROP|
 	 *            BeanMapper.QUERY)
-	 * @return
 	 */
 	@SuppressWarnings({ "rawtypes" })
 	public static String getSql(Class clz, String type) {
@@ -87,7 +78,6 @@ public class MapperFactory implements Mapper {
 	/**
 	 * 
 	 * @param clz
-	 * @return
 	 */
 	public static List<BeanElement> getElementList(Class clz) {
 		return Parser.get(clz).getBeanElementList();
@@ -157,8 +147,7 @@ public class MapperFactory implements Mapper {
 
 			sqlsMap.get(clz).put(REFRESH, sql);
 
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
+			LoggerProxy.debug(clz, sb);
 
 			return sql;
 
@@ -180,8 +169,7 @@ public class MapperFactory implements Mapper {
 
 			sqlsMap.get(clz).put(REMOVE, sql);
 
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
+			LoggerProxy.debug(clz, sb);
 
 			return sql;
 
@@ -203,8 +191,7 @@ public class MapperFactory implements Mapper {
 
 			sqlsMap.get(clz).put(GET_ONE, sql);
 
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
+			LoggerProxy.debug(clz, sb);
 
 			return sql;
 
@@ -235,8 +222,7 @@ public class MapperFactory implements Mapper {
 
 			sqlsMap.get(clz).put(QUERY, sql);
 
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
+			LoggerProxy.debug(clz, sb);
 
 			return sql;
 
@@ -255,8 +241,7 @@ public class MapperFactory implements Mapper {
 
 			sqlsMap.get(clz).put(LOAD, sql);
 
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
+			LoggerProxy.debug(clz, sb);
 
 			return sql;
 
@@ -306,16 +291,13 @@ public class MapperFactory implements Mapper {
 			sql = SqlParserUtil.mapper(sql, parsed);
 			sqlsMap.get(clz).put(CREATE, sql);
 
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
+			LoggerProxy.debug(clz, sb);
 
 			return sql;
 
 		}
 
 		public String getTableSql(Class clz) {
-
-			String dbType = DbType.value;
 
 			List<BeanElement> temp = Parser.get(clz).getBeanElementList();
 			Map<String, BeanElement> map = new HashMap<String, BeanElement>();
@@ -364,7 +346,7 @@ public class MapperFactory implements Mapper {
 				} else if (sqlType.equals(Dialect.DATE)) {
 					sb.append(" NULL");
 
-				}else if (bet.clz.isEnum()) {
+				}else if (BeanUtil.isEnum(bet.clz)) {
 					sb.append("(").append(bet.length).append(") NOT NULL");
 				} else if (sqlType.equals(Dialect.STRING)) {
 					sb.append("(").append(bet.length).append(") NULL");
@@ -390,14 +372,8 @@ public class MapperFactory implements Mapper {
 			sb.append(") ").append(Dialect.ENGINE).append(";");
 
 			String sql = sb.toString();
-
 			sql = Dialect.match(sql, CREATE_TABLE);
-
 			sql = SqlParserUtil.mapper(sql, parsed);
-
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
-
 			sqlsMap.get(clz).put(CREATE_TABLE, sql);
 
 			return sql;
@@ -415,8 +391,7 @@ public class MapperFactory implements Mapper {
 			sql = SqlParserUtil.mapper(sql, parsed);
 			sqlsMap.get(clz).put(TAG, sql);
 
-			if (ConfigAdapter.isIsShowSql())
-				System.out.println(sql);
+			LoggerProxy.debug(clz, sb);
 
 			return sql;
 		}

@@ -2,18 +2,23 @@ package io.xream.x7;
 
 //import io.seata.spring.annotation.GlobalTransactional;
 
+import io.xream.x7.common.async.CasualWorker;
 import io.xream.x7.common.bean.Criteria;
 import io.xream.x7.common.bean.CriteriaBuilder;
+import io.xream.x7.common.bean.ReduceType;
 import io.xream.x7.common.bean.condition.RefreshCondition;
+import io.xream.x7.common.util.JsonX;
 import io.xream.x7.common.web.Direction;
 import io.xream.x7.common.web.ViewEntity;
-import io.xream.x7.demo.CatRO;
+import io.xream.x7.demo.ro.CatRO;
 import io.xream.x7.demo.bean.Cat;
 import io.xream.x7.demo.bean.CatTest;
-import io.xream.x7.demo.bean.Dark;
-import io.xream.x7.demo.bean.DogTest;
+import io.xream.x7.demo.bean.Order;
+import io.xream.x7.demo.bean.TestBoo;
+import io.xream.x7.demo.controller.OrderController;
 import io.xream.x7.demo.controller.XxxController;
 import io.xream.x7.demo.remote.TestServiceRemote;
+import io.xream.x7.fallback.FallbackOnly;
 import io.xream.x7.reyc.api.ReyTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -23,6 +28,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 
@@ -36,50 +43,24 @@ public class XxxTest {
     private TestServiceRemote testServiceRemote;
     @Autowired
     private XxxController controller;
+    @Autowired
+    private OrderController orderController;
 
     @Autowired
     private DistributionLockTester distributionLockTester;
 
+
     public  void refreshByCondition() {
 
-        Dark dark = new Dark();
-        dark.setTest("REFRESHED");
-        dark.setId("666");
+        controller.refreshByCondition();
 
-        Cat cat = new Cat();
-
-        cat.setDogId(2323);
-        cat.setId(4L);
-        cat.setTestObj(dark);
-
-        ViewEntity ve = controller.refreshByCondition(cat);
-
-//        Executor executor = Executors.newFixedThreadPool(3);
-//
-//        for (int i=0; i<3; i++) {
-//
-//            executor.execute(new Runnable() {
-//                @Override
-//                public void run() {
-//                    ViewEntity ve = testServiceRemote.refreshByCondition(cat);
-//                    System.out.println("--------------- "+ve);
-//                }
-//            });
-//
-//        }
-//
-//        try {
-//            Thread.sleep(10000000);
-//        }catch (Exception e){
-//
-//        }
     }
 
-    public  void test() {
+    public  void testFindByResultMapped() {
 
         CatRO cat = new CatRO();
 
-        ViewEntity ve = this.controller.test(cat);
+        ViewEntity ve = this.controller.testFindByResultMapped(cat);
 
         System.out.println("\n______Result: " + ve);
 
@@ -98,8 +79,6 @@ public class XxxTest {
     public  void testOne() {
 
         CatRO cat = new CatRO();
-        cat.setRows(10);
-        cat.setPage(1);
 
 
 
@@ -122,10 +101,6 @@ public class XxxTest {
         this.controller.create();
     }
 
-    public void domain(){
-        this.controller.domain();
-    }
-
     public void distinct(){
 
         ViewEntity ve = this.controller.distinct(null);
@@ -142,7 +117,9 @@ public class XxxTest {
 //            }
 //        });
 
-        List<Cat> list = testServiceRemote.testFallBack(new CatRO());
+        CatRO catRO = new CatRO();
+        catRO.setCatFriendName("DOG");
+        List<Cat> list = testServiceRemote.testFallBack(catRO);
 
 //        testServiceRemote.test(new CatRO(),null);
 
@@ -182,43 +159,18 @@ public class XxxTest {
         return ve;
     }
 
-    public ViewEntity testDomain(){
 
-        CriteriaBuilder.DomainObjectBuilder builder = CriteriaBuilder.buildDomainObject(CatTest.class, DogTest.class);
-//        builder.paged().sort("catTest.id", Direction.DESC).page(1).rows(10);
-        Criteria.DomainObjectCriteria criteria = builder.get();
-        return testServiceRemote.testDomain(criteria);
-    }
+    public ViewEntity testRefreshConditionRemote(){
 
-    public ViewEntity testRefreshCondition(){
-        RefreshCondition<CatTest> refreshCondition = new RefreshCondition<>();
-//        refreshCondition.and().eq("id",0);
-        refreshCondition.refresh("isCat",true).and().eq("id",5);
-
-
-//        String str =this.reyTemplate.support(null, false,
-//                new BackendService() {
-//                    @Override
-//                    public String handle() {
-//                        return HttpClientUtil.post("http://127.0.0.1:8868/xxx/refreshCondition/test",refreshCondition);
-//                    }
-//
-//                    @Override
-//                    public Object fallback() {
-//                        System.out.println("FALL BACK TEST");
-//                        return null;
-//                    }
-//                });
-//
-//        return ViewEntity.ok(str);
-        return testServiceRemote.testRefreshConditionn(refreshCondition);
+        return testServiceRemote.testRefreshConditionnRemote(
+                RefreshCondition.build().refresh("createAt",new Date()).eq("id",100)
+        );
     }
 
 
 
     public ViewEntity testListCriteria(){
         ViewEntity ve = this.controller.listCriteria();
-        System.out.println(ve);
         return ve;
     }
 
@@ -247,7 +199,15 @@ public class XxxTest {
         Cat cat = new Cat();
         cat.setId(1000L);
         cat.setType("LOCK--------sss");
-        distributionLockTester.test(cat);
+        Criteria.X x = new Criteria.X();
+//        cat.getListX().add(x);
+        CasualWorker.accept(new Runnable() {
+            @Override
+            public void run() {
+                distributionLockTester.test("_test_cat_");
+            }
+        });
+        distributionLockTester.test("_test_cat_");
     }
 
 
@@ -267,5 +227,115 @@ public class XxxTest {
         return this.controller.in();
     }
 
+    public ViewEntity list(){
+        return this.controller.list();
+    }
+
+
+    public ViewEntity testOneKeyRemote(){
+        return this.testServiceRemote.testOneKey(10L);
+    }
+
+
+
+    public void testCreate() {
+
+        Cat cat = new Cat();
+        cat.setId(451L);
+        cat.setTest(255442L);
+        cat.setType("NL");
+        cat.setTestBoo(TestBoo.BOO);
+
+        this.controller.createCat(cat);
+    }
+
+    public void testCreateOrReplace(){
+
+        Cat cat = new Cat();
+        cat.setId(251L);
+//        cat.setTest(255442L);
+        cat.setType("BL");
+        cat.setTestBoo(TestBoo.TEST);
+
+        this.controller.refreshOrCreat(cat);
+    }
+
+    public void removeOrRefreshOrCreate(){
+        this.controller.removeOrRefreshOrCreate();
+    }
+
+    public  void testCacheGet(){
+        this.controller.testCacheGet();
+    }
+
+    public void testCriteriaRemote(){
+
+        CriteriaBuilder builder = CriteriaBuilder.build(Cat.class);
+
+//		builder.resultKey("id").resultKey("type");
+        List<Object> inList = new ArrayList<>();
+        inList.add("BL");
+        inList.add("NL");
+        builder.and().ne("taxType",664);
+        builder.and().in("type",inList);
+        builder.paged().orderIn("type",inList);
+
+//		Criteria.ResultMappedCriteria criteria = builder.get();
+        Criteria criteria = builder.get();
+
+        this.testServiceRemote.testCriteriaRemote(criteria);
+    }
+    
+    public void testResultMappedRemote(){
+
+        CriteriaBuilder.ResultMappedBuilder builder = CriteriaBuilder.buildResultMapped();
+        builder.distinct("id").reduce(ReduceType.COUNT,"dogId").groupBy("id");
+//        builder.resultKey("id").resultKey("dogId");
+        builder.and().eq("type","NL");
+        builder.paged().page(1).rows(10).sort("id",Direction.DESC);
+
+        Criteria.ResultMappedCriteria resultMappedCriteria = builder.get();
+
+        String json = JsonX.toJson(resultMappedCriteria);
+        System.out.println(json);
+        System.out.println(resultMappedCriteria.getDistinct());
+        resultMappedCriteria = JsonX.toObject(json, Criteria.ResultMappedCriteria.class);
+        System.out.println(resultMappedCriteria);
+        System.out.println(resultMappedCriteria.getDistinct());
+
+        this.testServiceRemote.testResultMappedRemote(resultMappedCriteria);
+
+    }
+
+    @FallbackOnly(exceptions = {RuntimeException.class}, fallback = FallbackOnlyTest.class)
+    public void testFallbackOnly(String test) {
+
+        System.out.println("testFallbackOnly");
+
+        boolean b = true;
+        if (b){
+            throw new RuntimeException("testFallbackOnly");
+        }
+    }
+
+
+    public void testOrder(){
+        Order order1 = new Order();
+        order1.setId(4);
+        order1.setName("ds0_TEST");
+        this.orderController.create(order1);
+    }
+
+    public void testOrderFind(){
+        this.orderController.find();
+    }
+
+    public void testOrderFindByAlia(){
+        this.orderController.findBuAlia();
+    }
+
+    public void inOrder(){
+        this.orderController.in();
+    }
 
 }

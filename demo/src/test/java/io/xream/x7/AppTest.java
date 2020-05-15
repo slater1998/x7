@@ -28,44 +28,93 @@ public class AppTest {
     private Executor executor = Executors.newFixedThreadPool(11);
 
     @Test
-    public void testAll(){
+    public void  testAll(){
 
-        xxxTest.testNonPaged();
+//        xxxTest.testOrder();
+//        xxxTest.testNonPaged();
+//        xxxTest.testNonPaged();
+//        xxxTest.testNonPaged();
 //        xxxTest.domain();
 
+//        xxxTest.inOrder();
+//        xxxTest.testOrderFind();
+//        xxxTest.testOrderFindByAlia();
 
 //        xxxTest.testReyClient();
 //        xxxTest.testTime();
 //        xxxTest.getBase();
 
-        xxxTest.testCriteria();
-        xxxTest.testResultMapped();
-//        xxxTest.testDomain();
+//        xxxTest.testCriteria();
+//        xxxTest.testCriteria();
+//        xxxTest.testCriteria();
 
-//        xxxTest.testRefreshCondition();
+
+
+//        xxxTest.testRefreshConditionRemote();
+//        xxxTest.testCriteriaRemote();
+//        xxxTest.testCriteriaRemote();
+//        xxxTest.testCriteriaRemote();
+
+
+//        xxxTest.testResultMappedRemote();
+//        xxxTest.testResultMappedRemote();
+//        xxxTest.testResultMappedRemote();
+//        xxxTest.testResultMappedRemote();
+
+//        xxxTest.testResultMapped();
+//        xxxTest.testResultMapped();
+//        xxxTest.testResultMapped();
 
 
 //        repositoryTest.refresh();
 
-        xxxTest.testAlia();
+//        xxxTest.testFindByResultMapped();
+
+//        xxxTest.testAlia();
+//        xxxTest.testAlia();
+//        xxxTest.testAlia();
+//        xxxTest.distinct();
 //        xxxTest.distinct();
 
-//        xxxTest.test();
+//        xxxTest.testFindByResultMapped();
+//        xxxTest.testFindByResultMapped();
+//        xxxTest.testFindByResultMapped();
 //        xxxTest.testOne();
-        xxxTest.testListCriteria();
+//        xxxTest.testListCriteria();
+        xxxTest.refreshByCondition();
+//        xxxTest.testListCriteria();
+//        xxxTest.testRemove();
+//        xxxTest.testListCriteria();
+//        xxxTest.testCreate();
+//        xxxTest.testListCriteria();
+//        xxxTest.testCreateOrReplace();
+//        xxxTest.testListCriteria();
+//        xxxTest.testListCriteria();
 //        xxxTest.create();
 //        xxxTest.createBatch();
 //        xxxTest.refresh()
 //        xxxTest.testRemove();
-//        xxxTest.refreshByCondition();
 //        xxxTest.testRestTemplate();
-        xxxTest.testList();
-        xxxTest.testLock();
-        xxxTest.in();
-        xxxTest.get();
+//        xxxTest.testList();
+//        xxxTest.testList();
+//        xxxTest.testList();
+//        xxxTest.testLock();
+
+//        xxxTest.in();
+//        xxxTest.in();
+//        xxxTest.in();
+//        xxxTest.get();
+//        xxxTest.get();
+//        xxxTest.get();
+//        xxxTest.testOneKeyRemote();
+//        xxxTest.testEnum();
+
+//        xxxTest.removeOrRefreshOrCreate();
+//
+//        xxxTest.testCacheGet();
+
+//        xxxTest.testFallbackOnly("test");
 
     }
-
-
 
 }

@@ -22,7 +22,6 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 
 
-
 @Configuration
 @ComponentScan({"io.xream.x7.repository.redis"})
 public class BootConfiguration  {

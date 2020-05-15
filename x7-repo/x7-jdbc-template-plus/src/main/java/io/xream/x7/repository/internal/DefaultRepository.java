@@ -19,6 +19,7 @@ package io.xream.x7.repository.internal;
 import io.xream.x7.common.bean.*;
 import io.xream.x7.common.bean.condition.InCondition;
 import io.xream.x7.common.bean.condition.RefreshCondition;
+import io.xream.x7.common.bean.condition.RemoveOrRrefreshOrCreate;
 import io.xream.x7.common.repository.X;
 import io.xream.x7.common.util.ExceptionUtil;
 import io.xream.x7.common.util.StringUtil;
@@ -27,8 +28,6 @@ import io.xream.x7.repository.*;
 import io.xream.x7.repository.exception.CriteriaSyntaxException;
 import io.xream.x7.repository.exception.PersistenceException;
 import io.xream.x7.repository.id.IdGeneratorService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
@@ -44,8 +43,6 @@ import java.util.Objects;
  * @author Sim
  */
 public abstract class DefaultRepository<T> implements BaseRepository<T> {
-
-    private final static Logger logger = LoggerFactory.getLogger(BaseRepository.class);
 
     private Class<T> clz;
 
@@ -69,10 +66,6 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
         this.repository =repository;
     }
 
-    private DomainObjectRepositoy domainObjectRepositoy;
-    public void setDomainObjectRepositoy(DomainObjectRepositoy domainObjectRepositoy){
-        this.domainObjectRepositoy = domainObjectRepositoy;
-    }
 
     public DefaultRepository(){
         parse();
@@ -126,15 +119,12 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
 
     @Override
     public long create(T obj) {
-        /*
-         * FIXME
-         */
-        logger.info("BaesRepository.create: " + obj);
+        return repository.create(obj);
+    }
 
-        long id = repository.create(obj);
-
-        return id;
-
+    @Override
+    public boolean createOrReplace(T obj) {
+        return repository.createOrReplace(obj);
     }
 
 
@@ -147,13 +137,12 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
         if (Objects.isNull(keyField))
             throw new CriteriaSyntaxException("No PrimaryKey, UnSafe Refresh, try to invoke DefaultRepository.refreshUnSafe(RefreshCondition<T> refreshCondition)");
 
-        CriteriaCondition criteriaCondition = refreshCondition.getCondition();
-
         boolean unSafe = true;//Safe
 
         if (unSafe) {
             String key = parsed.getKey(X.KEY_ONE);
-            for (Criteria.X x : criteriaCondition.getListX()) {
+            List<Criteria.X> listX = refreshCondition.getListX();
+            for (Criteria.X x : listX) {
                 if (key.equals(x.getKey())) {
                     Object value = x.getValue();
                     if (Objects.nonNull(value) && !value.toString().equals("0")) {
@@ -175,6 +164,10 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
         return repository.refresh(refreshCondition);
     }
 
+    @Override
+    public boolean removeOrRefreshOrCreate(RemoveOrRrefreshOrCreate<T> wrapper){
+        return RemoveOrRefreshOrCreateBiz.doIt(this.clz,this.repository,wrapper);
+    }
 
     @Override
     public boolean remove(String keyOne) {
@@ -270,10 +263,8 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
     @Override
     public List<T> list(T conditionObj) {
 
-        if (conditionObj instanceof Criteria.ResultMappedCriteria) {
-            throw new CriteriaSyntaxException(
-                    "Exception supported, no page not to invoke repository.list(resultMappedCriteria);");
-        }
+        if (conditionObj instanceof CriteriaBuilder || conditionObj instanceof Criteria)
+            throw new IllegalArgumentException("list(obj), obj: " + conditionObj);
 
         return repository.list(conditionObj);
     }
@@ -303,20 +294,24 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
 
         if (criteria instanceof Criteria.ResultMappedCriteria)
             throw new CriteriaSyntaxException("Codeing Exception: maybe {Criteria.ResultMappedCriteria criteria = builder.get();} instead of {Criteria criteria = builder.get();}");
+        criteria.setClz(this.clz);
+        criteria.setParsed(Parser.get(this.clz));
         return repository.find(criteria);
     }
 
 
     @Override
-    public Page<Map<String, Object>> find(Criteria.ResultMappedCriteria criteria) {
-        criteria.setClz(this.clz);
-        return repository.find(criteria);
+    public Page<Map<String, Object>> find(Criteria.ResultMappedCriteria resultMapped) {
+        resultMapped.setClz(this.clz);
+        resultMapped.setParsed(Parser.get(this.clz));
+        return repository.find(resultMapped);
     }
 
 
     @Override
     public List<Map<String, Object>> list(Criteria.ResultMappedCriteria resultMapped) {
         resultMapped.setClz(this.clz);
+        resultMapped.setParsed(Parser.get(this.clz));
         return repository.list(resultMapped);
     }
 
@@ -324,36 +319,25 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
     public List<T> list(Criteria criteria) {
 
         if (criteria instanceof Criteria.ResultMappedCriteria)
-            throw new CriteriaSyntaxException("Codeing Exception: maybe {Criteria.ResultMappedCriteria criteria = builder.get();} instead of {Criteria criteria = builder.get();}");
-
+            throw new CriteriaSyntaxException("Codeing Exception: mraybe {Criteria.ResultMappedCriteria criteria = builder.get();} instead of {Criteria criteria = builder.get();}");
+        criteria.setClz(this.clz);
+        criteria.setParsed(Parser.get(this.clz));
         return repository.list(criteria);
 
     }
 
-
     @Override
-    public <WITH> List<DomainObject<T, WITH>> listDomainObject(Criteria.DomainObjectCriteria domainObjectCriteria) {
-
-        if (StringUtil.isNullOrEmpty(domainObjectCriteria.getMainPropperty()))
-            throw new CriteriaSyntaxException("DefaultRepository.listDomainObject(domainObjectCriteria), domainObjectCriteria.getMainPropperty()is null");
-
-        if (domainObjectCriteria.getRelativeClz() == null){
-
-            if (domainObjectCriteria.getKnownMainIdList() == null || domainObjectCriteria.getKnownMainIdList().isEmpty()){
-                return domainObjectRepositoy.listDomainObject_NonRelative(domainObjectCriteria);
-            }else{
-                return domainObjectRepositoy.listDomainObject_Known_NonRelative(domainObjectCriteria);
-            }
-
-        }else{
-            if (domainObjectCriteria.getKnownMainIdList() == null || domainObjectCriteria.getKnownMainIdList().isEmpty()){
-                return domainObjectRepositoy.listDomainObject_HasRelative(domainObjectCriteria);
-            }else{
-                return domainObjectRepositoy.listDomainObject_Known_HasRelative(domainObjectCriteria);
-            }
-        }
-
+    public <T> void findToHandle(Criteria criteria, RowHandler<T> handler) {
+        criteria.setClz(this.clz);
+        criteria.setParsed(Parser.get(this.clz));
+        this.repository.findToHandle(criteria,handler);
     }
 
+    @Override
+    public void findToHandle(Criteria.ResultMappedCriteria resultMappedCriteria, RowHandler<Map<String,Object>> handler) {
+        resultMappedCriteria.setClz(this.clz);
+        resultMappedCriteria.setParsed(Parser.get(this.clz));
+        this.repository.findToHandle(resultMappedCriteria,handler);
+    }
 
 }

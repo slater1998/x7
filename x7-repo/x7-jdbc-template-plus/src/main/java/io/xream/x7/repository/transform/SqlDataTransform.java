@@ -17,6 +17,7 @@
 package io.xream.x7.repository.transform;
 
 import io.xream.x7.common.bean.Criteria;
+import io.xream.x7.common.bean.RowHandler;
 import io.xream.x7.common.bean.condition.InCondition;
 import io.xream.x7.common.bean.condition.RefreshCondition;
 import io.xream.x7.common.web.Page;
@@ -48,6 +49,13 @@ public class SqlDataTransform implements DataTransform {
     }
 
     @Override
+    public boolean createOrReplace(Object obj) {
+
+        return this.dao.createOrReplace(obj);
+
+    }
+
+    @Override
     public boolean createBatch(List<?> objList) {
 
         return this.dao.createBatch(objList);
@@ -57,6 +65,11 @@ public class SqlDataTransform implements DataTransform {
     @Override
     public <T> T getOne(T condition) {
         return this.dao.getOne(condition);
+    }
+
+    @Override
+    public <T> boolean refresh(T t) {
+        return this.dao.refresh(t);
     }
 
     @Override
@@ -132,8 +145,16 @@ public class SqlDataTransform implements DataTransform {
     public <T> List<T> list(Criteria criteria) {
 
         return this.dao.list(criteria);
-
     }
 
 
+    @Override
+    public <T> void findToHandle(Criteria criteria, RowHandler<T> handler) {
+        this.dao.findToHandle(criteria,handler);
+    }
+
+    @Override
+    public void findToHandle(Criteria.ResultMappedCriteria resultMappedCriteria, RowHandler<Map<String,Object>> handler) {
+        this.dao.findToHandle(resultMappedCriteria,handler);
+    }
 }

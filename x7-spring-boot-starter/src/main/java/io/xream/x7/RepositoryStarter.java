@@ -17,59 +17,44 @@
 package io.xream.x7;
 
 import io.xream.x7.cache.DefaultL2CacheResolver;
-import io.xream.x7.repository.dao.TxConfig;
+import io.xream.x7.common.cache.L2CacheResolver;
+import io.xream.x7.repository.CriteriaParser;
+import io.xream.x7.repository.DbType;
+import io.xream.x7.repository.ManuRepositoryStarter;
+import io.xream.x7.repository.Repository;
+import io.xream.x7.repository.cache.CacheableRepository;
+import io.xream.x7.repository.dao.Dao;
+import io.xream.x7.repository.dao.DaoImpl;
+import io.xream.x7.repository.dao.SqlCriteriaParser;
 import io.xream.x7.repository.id.DefaultIdGeneratorService;
 import io.xream.x7.repository.id.IdGeneratorService;
-import io.xream.x7.repository.internal.DomainObjectRepositoy;
 import io.xream.x7.repository.mapper.Dialect;
+import io.xream.x7.repository.mapper.MapperFactory;
+import io.xream.x7.repository.transform.DataTransform;
+import io.xream.x7.repository.transform.SqlDataTransform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import io.xream.x7.common.config.ConfigAdapter;
-import io.xream.x7.common.repository.CacheResolver;
-import io.xream.x7.common.util.StringUtil;
-import io.xream.x7.repository.CacheableRepository;
-import io.xream.x7.repository.CriteriaParser;
-import io.xream.x7.repository.DbType;
-import io.xream.x7.repository.Repository;
-import io.xream.x7.repository.dao.Dao;
-import io.xream.x7.repository.dao.DaoImpl;
-import io.xream.x7.repository.dao.SqlCriteriaParser;
-import io.xream.x7.repository.mapper.MapperFactory;
-import io.xream.x7.repository.transform.DataTransform;
-import io.xream.x7.repository.transform.SqlDataTransform;
-
-import java.util.Objects;
 
 
 public class RepositoryStarter  {
 
     private Logger logger = LoggerFactory.getLogger(RepositoryStarter.class);
 
-
     @Bean
     @Order(2)
     public Dialect dialect(Environment environment){
-        String driverClassName = environment.getProperty("spring.datasource.driver-class-name");
+        String driverClassName = getDbDriverKey(environment);
 
-        String driver = null;
-        if (Objects.isNull(driverClassName)) {
-            driver = environment.getProperty("x7.db.driver");
-        } else {
-            driver = driverClassName;
-        }
-
-        driver = driver.toLowerCase();
         Dialect dialect = null;
         try {
-            if (driver.contains(DbType.MYSQL)) {
+            if (driverClassName.contains(DbType.MYSQL)) {
                 DbType.value = DbType.MYSQL;
                 dialect = (Dialect) Class.forName("io.xream.x7.repository.dialect.MySqlDialect").newInstance();
-            } else if (driver.contains(DbType.ORACLE)) {
+            } else if (driverClassName.contains(DbType.ORACLE)) {
                 DbType.value = DbType.ORACLE;
                 dialect = (Dialect) Class.forName("io.xream.x7.repository.dialect.OracleDialect").newInstance();
             }
@@ -85,7 +70,7 @@ public class RepositoryStarter  {
     @Order(3)
     public CriteriaParser criteriaParser(Dialect dialect,Environment environment) {
 
-        String driverClassName = environment.getProperty("spring.datasource.driver-class-name");
+        String driverClassName = getDbDriverKey(environment);
 
         CriteriaParser criteriaParser =  null;
         if (driverClassName.toLowerCase().contains("mysql")
@@ -102,7 +87,8 @@ public class RepositoryStarter  {
     @Order(4)
     public Dao dao(Environment environment){
 
-        String driverClassName = environment.getProperty("spring.datasource.driver-class-name");
+        String driverClassName = getDbDriverKey(environment);
+
         Dao dao =  null;
         if (driverClassName.toLowerCase().contains("mysql")
                 || driverClassName.toLowerCase().contains("oracle")) {
@@ -113,7 +99,7 @@ public class RepositoryStarter  {
 
     @Bean
     @Order(5)
-    public CacheResolver cacheResolver(){
+    public L2CacheResolver cacheResolver(){
         return new DefaultL2CacheResolver();
     }
 
@@ -127,12 +113,11 @@ public class RepositoryStarter  {
 
     @Bean
     @Order(7)
-    public Repository dataRepository(Dao dao, CacheResolver cacheResolver,Environment environment){
+    public Repository dataRepository(Dao dao, L2CacheResolver cacheResolver,Environment environment){
 
-        String driverClassName = environment.getProperty("spring.datasource.driver-class-name");
+        String driverClassName = getDbDriverKey(environment);
 
         DataTransform dataTransform = null;
-
         if (driverClassName.toLowerCase().contains("mysql")
                 || driverClassName.toLowerCase().contains("oracle")) {
             dataTransform = new SqlDataTransform();
@@ -143,50 +128,17 @@ public class RepositoryStarter  {
         repository.setDataTransform(dataTransform);
         repository.setCacheResolver(cacheResolver);
 
+        ManuRepositoryStarter.init(repository);
+
         return repository;
     }
 
 
-    @Bean
-    @Order(9)
-    public DomainObjectRepositoy domainObjectRepositoy(Repository repository) {
-        DomainObjectRepositoy domainObjectRepositoy = new DomainObjectRepositoy();
-        domainObjectRepositoy.setRepository(repository);
-        return domainObjectRepositoy;
-    }
-
     @ConditionalOnMissingBean(X7Data.class)
     @Bean
-    @Order(10)
-    public X7Data enableData(Environment env){
-
-
-        {
-            String showSqlStr = env.getProperty("x7.repository.show-sql");
-            boolean showSql = false;
-            if (StringUtil.isNotNull(showSqlStr)){
-                try {
-                    showSql = Boolean.parseBoolean(showSqlStr);
-                }catch (Exception e){
-                    e.printStackTrace();
-                }
-            }
-            if (showSql) {
-                ConfigAdapter.setIsShowSql(true);
-            }else{
-                logger.info("X7 Repsository will not show SQL, for no config like one of: x7.repository.show-sql=true" );
-            }
-
-        }
-
+    @Order(8)
+    public X7Data enableData(){
         return new X7Data();
-    }
-
-    @ConditionalOnMissingBean(TxConfig.class)
-    @Bean
-    @Order(11)
-    public TxConfig txConfig(DataSourceTransactionManager dstm){
-        return new TxConfig(dstm);
     }
 
 
@@ -197,6 +149,18 @@ public class RepositoryStarter  {
      */
     private void initDialect(Dialect dialect) {
         MapperFactory.Dialect = dialect;
+    }
+
+    private String getDbDriverKey(Environment environment) {
+        String driverClassName = null;
+        try {
+            driverClassName = environment.getProperty("spring.datasource.driver-class-name");
+        }catch (Exception e){
+
+        }
+        if (driverClassName == null)
+            return "mysql";
+        return driverClassName.toLowerCase();
     }
 
 }

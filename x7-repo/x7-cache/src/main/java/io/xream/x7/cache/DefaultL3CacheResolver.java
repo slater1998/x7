@@ -16,7 +16,7 @@
  */
 package io.xream.x7.cache;
 
-public class DefaultL3CacheResolver implements L3CacheResolver {
+public final class DefaultL3CacheResolver implements L3CacheResolver {
 
 
    private L3CacheStorage storage;

@@ -19,8 +19,8 @@ package io.xream.x7.repository.dialect;
 import io.xream.x7.common.bean.BeanElement;
 import io.xream.x7.common.bean.Criteria;
 import io.xream.x7.common.bean.SqlScript;
+import io.xream.x7.common.util.BeanUtil;
 import io.xream.x7.common.util.JsonX;
-import io.xream.x7.common.util.StringUtil;
 import io.xream.x7.repository.mapper.Dialect;
 
 import java.math.BigDecimal;
@@ -82,7 +82,7 @@ public class MySqlDialect implements Dialect {
             return null;
         Class ec = element.clz;
 
-        if (ec.isEnum()) {
+        if (BeanUtil.isEnum(ec)) {
             return Enum.valueOf(ec, obj.toString());
         } else if (element.isJson) {
             if (ec == List.class) {
@@ -103,6 +103,11 @@ public class MySqlDialect implements Dialect {
     }
 
     @Override
+    public String createOrReplaceSql(String sql) {
+        return sql.replaceFirst("INSERT","REPLACE");
+    }
+
+    @Override
     public String transformAlia(String mapper,Map<String, String> aliaMap,  Map<String, String> resultKeyAliaMap) {
 
         if (!resultKeyAliaMap.isEmpty()) {
@@ -110,19 +115,19 @@ public class MySqlDialect implements Dialect {
                 mapper = resultKeyAliaMap.get(mapper);
             }
         }
-        if (aliaMap.isEmpty())
-            return mapper;
+//        if (aliaMap.isEmpty())
+//            return mapper;
 
-        if (mapper.contains(".")) {
-            String[] arr = mapper.split("\\.");
-            String alia = arr[0];
-            String p = arr[1];
-            String clzName = aliaMap.get(alia);
-            if (StringUtil.isNullOrEmpty(clzName)){
-                clzName = alia;
-            }
-            return clzName+"."+p;
-        }
+//        if (mapper.contains(".")) {
+//            String[] arr = mapper.split("\\.");
+//            String alia = arr[0];
+//            String p = arr[1];
+//            String clzName = aliaMap.get(alia);
+//            if (StringUtil.isNullOrEmpty(clzName)){
+//                clzName = alia;
+//            }
+//            return clzName+"."+p;
+//        }
 
         return mapper;
 
@@ -134,7 +139,7 @@ public class MySqlDialect implements Dialect {
             String str = (String) value;
             value = str.replace("<", "&lt").replace(">", "&gt");
         }
-        if (Objects.nonNull(value) && value.getClass().isEnum())
+        if (Objects.nonNull(value) && BeanUtil.isEnum(value.getClass()))
             return ((Enum)value).name();
 
         return value;

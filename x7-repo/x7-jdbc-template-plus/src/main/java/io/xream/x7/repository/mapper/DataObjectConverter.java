@@ -17,13 +17,11 @@
 package io.xream.x7.repository.mapper;
 
 import io.xream.x7.common.bean.*;
-import io.xream.x7.common.config.ConfigAdapter;
-import io.xream.x7.common.repository.X;
+import io.xream.x7.common.util.BeanUtil;
 import io.xream.x7.common.util.ExceptionUtil;
 import io.xream.x7.common.util.JsonX;
+import io.xream.x7.common.util.LoggerProxy;
 import io.xream.x7.repository.exception.PersistenceException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -33,46 +31,52 @@ import java.util.*;
 
 public class DataObjectConverter {
 
-    private static Logger logger = LoggerFactory.getLogger(DataObjectConverter.class);
 
-    public static List<Map<String, Object>> dataToPropertyObjectMap(Class clz, List<Map<String, Object>> dataMapList, Criteria.ResultMappedCriteria resultMapped, Dialect dialect) {
-        List<Map<String, Object>> propertyMapList = new ArrayList<>();
+    public static Map<String,Object> dataToPropertyObjectMap(Class clz,Map<String,Object> dataMap, Criteria.ResultMappedCriteria resultMapped, Dialect dialect) {
+        Map<String, Object> propertyMap = new HashMap<>();
+        for (Map.Entry<String, Object> entry : dataMap.entrySet()) {
+            String mapper = entry.getKey();
+            String property = null;
+            BeanElement be = null;
+            if (resultMapped == null) {
+                Parsed parsed = Parser.get(clz);
+                property = parsed.getPropertyByLower(mapper);
+                be = parsed.getElement(property);
+            } else {
 
-        for (Map<String, Object> mapperMap : dataMapList) {
-
-            Map<String, Object> propertyMap = new HashMap<>();
-            for (Map.Entry<String, Object> entry : mapperMap.entrySet()) {
-                String mapper = entry.getKey();
-                String property = null;
-                BeanElement be = null;
-                if (resultMapped == null) {
-                    Parsed parsed = Parser.get(clz);
-                    property = parsed.getPropertyByLower(mapper);
-                    be = parsed.getElement(property);
+                if (mapper.contains(SqlScript.DOLLOR)) {
+                    property = dialect.transformAlia(mapper, resultMapped.getAliaMap(), resultMapped.getResultKeyAliaMap());
                 } else {
+                    mapper = dialect.transformAlia(mapper, resultMapped.getAliaMap(), resultMapped.getResultKeyAliaMap());
+                    property = resultMapped.getPropertyMapping().property(mapper);
 
-                    if (mapper.contains(SqlScript.DOLLOR)) {
-                        property = dialect.transformAlia(mapper, resultMapped.getAliaMap(), resultMapped.getResultKeyAliaMap());
+                    if (property.contains(".")) {
+                        String[] arr = property.split("\\.");
+                        String clzName = resultMapped.getAliaMap().get(arr[0]);
+                        Parsed parsed = Parser.get(clzName);
+                        be = parsed.getElement(arr[1]);
                     } else {
-                        mapper = dialect.transformAlia(mapper, resultMapped.getAliaMap(), resultMapped.getResultKeyAliaMap());
-                        property = resultMapped.getPropertyMapping().property(mapper);
-
-                        if (property.contains(".")) {
-                            String[] arr = property.split("\\.");
-                            Parsed parsed = Parser.get(arr[0]);
-                            be = parsed.getElement(arr[1]);
-                        } else {
-                            Parsed parsed = Parser.get(clz);
-                            be = parsed.getElement(property);
-                        }
+                        Parsed parsed = Parser.get(clz);
+                        be = parsed.getElement(property);
                     }
                 }
-                Object value = entry.getValue();
-                if (be != null) {
-                    value = dialect.mappingToObject(value, be);
-                }
-                propertyMap.put(property, value);
             }
+            Object value = entry.getValue();
+            value = filter(value);
+            if (be != null) {
+                value = dialect.mappingToObject(value, be);
+            }
+            propertyMap.put(property, value);
+        }
+        return propertyMap;
+    }
+
+    public static List<Map<String, Object>> dataToPropertyObjectMapList(Class clz, List<Map<String, Object>> dataMapList, Criteria.ResultMappedCriteria resultMapped, Dialect dialect) {
+        List<Map<String, Object>> propertyMapList = new ArrayList<>();
+
+        for (Map<String, Object> dataMap : dataMapList) {
+
+            Map<String, Object> propertyMap = dataToPropertyObjectMap(clz, dataMap, resultMapped, dialect);
             propertyMapList.add(propertyMap);
         }
 
@@ -88,6 +92,7 @@ public class DataObjectConverter {
 
             Object value = map.get(property);
             if (value != null) {
+                value = filter(value);
                 method.invoke(obj, value);
             }
         }
@@ -101,7 +106,7 @@ public class DataObjectConverter {
             for (BeanElement ele : eles) {
                 Object value = ele.getMethod.invoke(obj);
                 if (value == null) {
-                    if (ele.clz.isEnum())
+                    if (BeanUtil.isEnum(ele.clz))
                         throw new PersistenceException(
                                 "ENUM CAN NOT NULL, property:" + obj.getClass().getName() + "." + ele.getProperty());
                     if (ele.clz == Boolean.class || ele.clz == Integer.class || ele.clz == Long.class
@@ -114,7 +119,7 @@ public class DataObjectConverter {
                     if (ele.isJson) {
                         String str = JsonX.toJson(value);
                         list.add(str);
-                    } else if (ele.clz.isEnum()) {
+                    } else if (BeanUtil.isEnum(ele.clz)) {
                         String str = ((Enum) value).name();
                         list.add(str);
                     } else {
@@ -164,7 +169,7 @@ public class DataObjectConverter {
                     if (value != null && !value.equals("")) {
                         map.put(property, value);
                     }
-                } else if (type.isEnum()) {
+                } else if (BeanUtil.isEnum(type)) {
                     if (value != null) {
                         map.put(property, ((Enum) value).name());
                     }
@@ -218,30 +223,25 @@ public class DataObjectConverter {
             e.printStackTrace();
         }
 
-        if (ConfigAdapter.isIsShowSql())
-            logger.info("__queryValueMap: " + map);
+        LoggerProxy.debug(clz, map);
 
         return map;
 
     }
 
-    public static boolean filterGetOneWithLongKey(Parsed parsed, Map<String, Object> queryMap) {
-        String key = parsed.getKey(X.KEY_ONE);
-        BeanElement be = parsed.getElement(key);
-        if (be.clz == Long.class) {
-            String mapper = be.getMapper();
-            if (queryMap.containsKey(mapper)) {
-                Object keyObj = queryMap.get(mapper);
-                if (Long.valueOf(keyObj.toString()) == 0L) {
-                    return true;
-                }
-            }
-        }
-        return false;
+
+    public static void log(Class clz, List<Object> valueList) {
+        LoggerProxy.debug(clz, valueList);
     }
 
-    public static void log(List<Object> valueList) {
-        if (ConfigAdapter.isIsShowSql())
-            logger.info("__queryValueList: " + valueList);
+    private static Object filter(Object value) {
+        if (value == null)
+            return null;
+        if (value instanceof String) {
+            String str = (String) value;
+            value = str.replace("<","&lt").replace(">","&gt");
+        }
+        return value;
     }
+
 }

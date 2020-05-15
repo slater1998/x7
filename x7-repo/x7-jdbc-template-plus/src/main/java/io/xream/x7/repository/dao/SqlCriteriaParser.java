@@ -17,18 +17,24 @@
 package io.xream.x7.repository.dao;
 
 import io.xream.x7.common.bean.*;
+import io.xream.x7.common.bean.condition.RefreshCondition;
 import io.xream.x7.common.util.BeanUtil;
 import io.xream.x7.common.util.BeanUtilX;
+import io.xream.x7.common.util.JsonX;
 import io.xream.x7.common.util.StringUtil;
 import io.xream.x7.common.web.Direction;
 import io.xream.x7.repository.CriteriaParser;
 import io.xream.x7.repository.SqlParsed;
+import io.xream.x7.repository.exception.CriteriaSyntaxException;
+import io.xream.x7.repository.exception.SqlBuildException;
 import io.xream.x7.repository.mapper.Dialect;
+import io.xream.x7.repository.util.SqlParserUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.Assert;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.sql.Timestamp;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class SqlCriteriaParser implements CriteriaParser {
 
@@ -53,6 +59,8 @@ public class SqlCriteriaParser implements CriteriaParser {
     }
 
     private String mapping(String key, Criteria criteria) {
+//        if (key.contains("("))
+//            return key;
 
         if (key.contains(SqlScript.POINT)) {
 
@@ -95,57 +103,202 @@ public class SqlCriteriaParser implements CriteriaParser {
             return "";
         StringBuilder sb = new StringBuilder();
         List<Criteria.X> xList = criteriaCondition.getListX();
-        x(sb, xList, criteriaCondition, true);
+        x(sb, xList, criteriaCondition, new ArrayList<String>(),true);
         return sb.toString();
     }
 
     @Override
     public SqlParsed parse(Criteria criteria) {
 
+
+        SqlBuilder sqlBuilder = SqlBuilder.get();
+
         parseAlia(criteria);
+
+        filter(criteria);
 
         env(criteria);
 
-        resultKey(criteria);
+        resultKey(sqlBuilder,criteria);
+
         /*
          * select column
          */
-        StringBuilder sb = new StringBuilder();
-        select(sb, criteria);
+        select(sqlBuilder, criteria);
         /*
-         * from table
+         * force index
          */
-        sourceScript(sb, criteria);
-
+        forceIndex(sqlBuilder, criteria);
         /*
          * StringList
          */
-        x(sb, criteria.getListX(), criteria);
+        x(sqlBuilder, criteria.getListX(), criteria);
 
-        StringBuilder countSql = count(sb, criteria);
+        SqlBuilder countSql = count(sqlBuilder.sbCondition, criteria);
         /*
          * group by
          */
-        groupBy(sb, criteria);
+        groupBy(sqlBuilder, criteria);
 
+        having(sqlBuilder, criteria);
         /*
          * sort
          */
-        sort(sb, criteria);
+        sort(sqlBuilder, criteria);
 
-        SqlParsed sqlParsed = sqlArr(sb, criteria, countSql);
+        /*
+         * from table
+         */
+        sourceScript(sqlBuilder, criteria);
+
+        SqlParsed sqlParsed = sqlArr(sqlBuilder, criteria, countSql);
 
         return sqlParsed;
     }
 
-    private SqlParsed sqlArr(StringBuilder sb, Criteria criteria, StringBuilder countSql) {
+    @Override
+    public String parseRefresh(Parsed parsed, RefreshCondition refreshCondition) {
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(SqlScript.UPDATE).append(SqlScript.SPACE).append(parsed.getTableName()).append(SqlScript.SPACE);
+
+        concatRefresh(sb, parsed, refreshCondition);
+
+        filterCondition(parsed, refreshCondition.getListX());
+
+        String conditionSql = parseCondition(refreshCondition);
+
+        if (conditionSql.startsWith(" AND")|| conditionSql.startsWith("AND")) {
+            conditionSql = conditionSql.replaceFirst("AND", "WHERE");
+        }
+
+        conditionSql = SqlParserUtil.mapper(conditionSql, parsed);
+
+        sb.append(conditionSql);
+
+        String sql = sb.toString();
+
+        if (sql.contains("SET  WHERE"))
+            throw new SqlBuildException(sql);
+
+        return sql;
+    }
+
+    private void filterCondition(Parsed parsed,List<Criteria.X> listX){
+        Iterator<Criteria.X> ite = listX.iterator();
+        while(ite.hasNext()){
+            Criteria.X x = ite.next();
+            if (BeanUtilX.isBaseType_0(x.getKey(), x.getValue(), parsed)){
+                ite.remove();
+            }
+        }
+
+    }
+
+
+    private void concatRefresh(StringBuilder sb, Parsed parsed, RefreshCondition refreshCondition) {
+
+        sb.append(SqlScript.SET);
+
+        List<Criteria.X> refreshList = refreshCondition.getRefreshList();
+
+        List<Object> refreshValueList = new ArrayList<>();
+
+        boolean isNotFirst = false;
+        for (Criteria.X x : refreshList) {
+
+            if (x.getPredicate() == PredicateAndOtherScript.X) {
+
+                if (isNotFirst) {
+                    sb.append(SqlScript.COMMA).append(SqlScript.SPACE);
+                }
+
+                isNotFirst = true;
+
+                Object key = x.getKey();
+
+                String str = key.toString();
+
+                String sql = BeanUtilX.normalizeSql(str);
+
+                sql = SqlParserUtil.mapper(sql, parsed);
+
+                sb.append(sql);
+
+            } else {
+                String key = x.getKey();
+                if (key.contains("?")) {
+
+                    if (isNotFirst) {
+                        sb.append(SqlScript.COMMA).append(SqlScript.SPACE);
+                    }
+
+                    isNotFirst = true;
+
+                    String sql = BeanUtilX.normalizeSql(key);
+                    sql = SqlParserUtil.mapper(sql, parsed);
+                    sb.append(sql);
+                } else {
+
+                    if (StringUtil.isNullOrEmpty(x.getValue().toString()) || BeanUtilX.isBaseType_0(key, x.getValue(), parsed)) {
+                        continue;
+                    }
+
+                    if (isNotFirst) {
+                        sb.append(SqlScript.COMMA).append(SqlScript.SPACE);
+                    }
+
+                    isNotFirst = true;
+
+                    String mapper = parsed.getMapper(key);
+                    sb.append(mapper);
+                    sb.append(SqlScript.EQ_PLACE_HOLDER);
+
+                    BeanElement be = parsed.getElementMap().get(key);
+                    if (be == null) {
+                        throw new RuntimeException("can not find the property " + key + " of " + parsed.getClzName());
+                    }
+                    if (be.clz == Date.class) {
+                        if (x.getValue() instanceof Long) {
+                            x.setValue(new Date(((Long) x.getValue()).longValue()));
+                        }
+                    } else if (be.clz == Timestamp.class) {
+                        if (x.getValue() instanceof Long) {
+                            x.setValue(new Timestamp(((Long) x.getValue()).longValue()));
+                        }
+                    } else if (be.isJson) {
+                        Object v = x.getValue();
+                        if (v != null) {
+                            String str = JsonX.toJson(v);
+                            x.setValue(str);
+                        }
+                    }
+
+                }
+
+                refreshValueList.add(x.getValue());
+            }
+
+        }
+
+
+        if (!refreshValueList.isEmpty()) {
+            refreshCondition.getValueList().addAll(0, refreshValueList);
+        }
+    }
+
+    private SqlParsed sqlArr(SqlBuilder sb, Criteria criteria, SqlBuilder countSb) {
 
         SqlParsed sqlParsed = new SqlParsed();
 
-        sqlParsed.setCountSql(countSql == null ? null : countSql.toString());
+        if (countSb != null) {
+            StringBuilder sqlSb = new StringBuilder();
+            sqlSb.append(countSb.sbResult).append(sb.sbSource).append(countSb.sbCondition);
+            sqlParsed.setCountSql(sqlSb.toString());
+        }
 
         StringBuilder sqlSb = new StringBuilder();
-        sqlSb.append(SqlScript.SELECT).append(SqlScript.SPACE).append(criteria.resultAllScript()).append(SqlScript.SPACE).append(sb);
+        sqlSb.append(sb.sbResult).append(sb.sbSource).append(sb.sbCondition);
 
         sqlParsed.setSql(sqlSb);
 
@@ -165,7 +318,7 @@ public class SqlCriteriaParser implements CriteriaParser {
         criteria.getValueList().clear();
     }
 
-    private void resultKey(Criteria criteria) {
+    private void resultKey(SqlBuilder sqlBuilder,Criteria criteria) {
         if (!(criteria instanceof Criteria.ResultMappedCriteria))
             return;
 
@@ -187,7 +340,7 @@ public class SqlCriteriaParser implements CriteriaParser {
             StringBuilder distinctColumn = new StringBuilder();
             distinctColumn.append(column);
             for (String resultKey : list) {
-
+                sqlBuilder.conditionList.add(resultKey);
                 String mapper = mapping(resultKey, criteria);
                 propertyMapping.put(resultKey, mapper);//REDUCE ALIAN NAME
                 distinctColumn.append(SqlScript.SPACE).append(mapper);
@@ -213,17 +366,42 @@ public class SqlCriteriaParser implements CriteriaParser {
                 if (flag) {
                     column.append(SqlScript.COMMA);
                 }
+                sqlBuilder.conditionList.add(reduce.getProperty());
                 String alianProperty = reduce.getProperty() + SqlScript.UNDER_LINE + reduce.getType().toString().toLowerCase();//property_count
                 String alianName = alianProperty.replace(SqlScript.POINT, SqlScript.DOLLOR);
                 resultMapped.getResultKeyAliaMap().put(alianName, alianProperty);
 
                 String value = mapping(reduce.getProperty(), criteria);
+
+                ReduceType reduceType = reduce.getType();
+                if (reduceType == ReduceType.GROUP_CONCAT_DISTINCT){
+                    reduceType = ReduceType.GROUP_CONCAT;
+                    value = "DISTINCT " + value;
+                }else  if (reduceType == ReduceType.SUM_DISTINCT){
+                    reduceType = ReduceType.SUM;
+                    value = "DISTINCT " + value;
+                }else  if (reduceType == ReduceType.COUNT_DISTINCT){
+                    reduceType = ReduceType.COUNT;
+                    value = "DISTINCT " + value;
+                }else  if (reduceType == ReduceType.AVG_DISTINCT){
+                    reduceType = ReduceType.AVG;
+                    value = "DISTINCT " + value;
+                }
+
                 column.append(SqlScript.SPACE)
-                        .append(reduce.getType())
+                        .append(reduceType)
                         .append(SqlScript.LEFT_PARENTTHESIS)//" ( "
                         .append(value)
                         .append(SqlScript.RIGHT_PARENTTHESIS).append(SqlScript.SPACE)//" ) "
                         .append(SqlScript.AS).append(SqlScript.SPACE).append(alianName);
+
+                Criteria.X x = reduce.getHaving();
+                if (x != null) {
+                    x.setKey(alianName);
+                    if (!criteria.isTotalRowsIgnored()){
+                        throw new CriteriaSyntaxException("Reduce with having not support totalRows query, try to build.paged().scroll(true)");
+                    }
+                }
 
                 flag = true;
             }
@@ -237,6 +415,7 @@ public class SqlCriteriaParser implements CriteriaParser {
             int size = resultList.size();
             for (int i = 0; i < size; i++) {
                 String key = resultList.get(i);
+                sqlBuilder.conditionList.add(key);
                 String mapper = mapping(key, criteria);
                 propertyMapping.put(key, mapper);
                 mapper = this.dialect.resultKeyAlian(mapper, resultMapped);
@@ -244,21 +423,56 @@ public class SqlCriteriaParser implements CriteriaParser {
                 if (i < size - 1) {
                     column.append(SqlScript.COMMA);
                 }
+                flag = true;
+            }
+
+        }
+
+        List<FunctionResultKey> funtionList = resultMapped.getResultFuntionList();
+        if (!funtionList.isEmpty()) {//
+            if (flag) {
+                column.append(SqlScript.COMMA);
+            }
+
+            Map<String,String> resultKeyAliaMap = resultMapped.getResultKeyAliaMap();
+
+            int size = funtionList.size();
+            for (int i = 0; i < size; i++) {
+                FunctionResultKey functionResultKey = funtionList.get(i);
+
+                String function = functionResultKey.getScript();
+
+                for (String key : functionResultKey.getKeys()) {
+                    sqlBuilder.conditionList.add(key);
+                    String mapper = mapping(key, criteria);
+                    function = function.replaceFirst("\\?",mapper);
+                }
+                String alian = "c" + resultKeyAliaMap.size();
+                String aliaKey = functionResultKey.getAlia();
+                resultKeyAliaMap.put(aliaKey, alian);
+                propertyMapping.put(aliaKey,aliaKey);
+                column.append(SqlScript.SPACE).append(function).append(SqlScript.AS).append(alian);
+                if (i < size - 1) {
+                    column.append(SqlScript.COMMA);
+                }
             }
         }
 
+
         String script = column.toString();
         if (StringUtil.isNullOrEmpty(script)) {
-            throw new RuntimeException("Suggest API: find(Criteria criteria), no any resultKey for ResultMappedCriteria");
+            throw new CriteriaSyntaxException("Suggest API: find(Criteria criteria), no any resultKey for ResultMappedCriteria");
         }
         criteria.setCustomedResultKey(column.toString());
+
+        ((Criteria.ResultMappedCriteria) criteria).adpterResultScript();
     }
 
-    private void select(StringBuilder sb, Criteria criteria) {
-
+    private void select(SqlBuilder sb, Criteria criteria) {
+        sb.sbResult.append(SqlScript.SELECT).append(SqlScript.SPACE).append(criteria.resultAllScript()).append(SqlScript.SPACE);
     }
 
-    private void groupBy(StringBuilder sb, Criteria criteria) {
+    private void groupBy(SqlBuilder sb, Criteria criteria) {
         if (criteria instanceof Criteria.ResultMappedCriteria) {
             Criteria.ResultMappedCriteria rm = (Criteria.ResultMappedCriteria) criteria;
 
@@ -266,59 +480,173 @@ public class SqlCriteriaParser implements CriteriaParser {
             if (StringUtil.isNullOrEmpty(groupByS))
                 return;
 
-            sb.append(Conjunction.GROUP_BY.sql());
+            sb.sbCondition.append(ConjunctionAndOtherScript.GROUP_BY.sql());
 
             String[] arr = groupByS.split(SqlScript.COMMA);
 
             int i = 0, l = arr.length;
             for (String groupBy : arr) {
                 groupBy = groupBy.trim();
+                sb.conditionList.add(groupBy);
                 if (StringUtil.isNotNull(groupBy)) {
                     String mapper = mapping(groupBy, criteria);
-                    sb.append(mapper);
+                    sb.sbCondition.append(mapper);
                     i++;
                     if (i < l) {
-                        sb.append(SqlScript.COMMA);
+                        sb.sbCondition.append(SqlScript.COMMA);
                     }
                 }
             }
         }
     }
 
+    private void having(SqlBuilder sb, Criteria criteria) {
+        if (!(criteria instanceof Criteria.ResultMappedCriteria))
+            return;
+
+        Criteria.ResultMappedCriteria resultMapped = (Criteria.ResultMappedCriteria)criteria;
+        List<Reduce> reduceList = resultMapped.getReduceList();
+
+        if (reduceList.isEmpty())
+            return;
+        for (Reduce reduce : reduceList) {
+            Criteria.X x = reduce.getHaving();
+            if (x == null)
+                continue;
+            sb.sbCondition.append(x.getConjunction().sql()).append(x.getKey()).append(x.getPredicate().sql()).append(x.getValue());
+            sb.conditionList.add(x.getKey());
+        }
+    }
+
 
     private void parseAlia(Criteria criteria) {
-        String script = criteria.sourceScript().trim();
 
         if (criteria instanceof Criteria.ResultMappedCriteria) {
-            Criteria.ResultMappedCriteria resultMappedCriteria = (Criteria.ResultMappedCriteria) criteria;
-            Map<String, String> aliaMap = BeanUtilX.parseAliaBySourceScriptSql(script);
-            resultMappedCriteria.setAliaMap(aliaMap);
+            Criteria.ResultMappedCriteria rmc = (Criteria.ResultMappedCriteria) criteria;
+
+            if (rmc.getSourceScripts().isEmpty()){// builderSource null
+                String script = criteria.sourceScript();//string -> list<>
+                List<String> list = SourceScriptBuilder.split(script);
+                List<SourceScript> sourceScripts = SourceScriptBuilder.parse(list);
+                rmc.getSourceScripts().addAll(sourceScripts);
+            }
+
+            Map<String,String> aliaMap = new HashMap<>();
+            for (SourceScript sc : rmc.getSourceScripts()){
+                aliaMap.put(sc.alia(),sc.getSource());
+            }
+
+            rmc.setAliaMap(aliaMap);
+        }
+
+    }
+
+
+    private void optimizeSourceScript (List<SourceScript> sourceScripts,List<String> conditionList){
+        if (sourceScripts.size() == 1)
+            return;
+        String first = conditionList.get(0);
+        if (!first.contains("."))
+            return;
+        for (SourceScript sourceScript : sourceScripts) {
+            for (String key : conditionList){
+                if (StringUtil.isNullOrEmpty(sourceScript.getAlia())){
+                    if (key.contains(sourceScript.getSource()+".")){
+                        sourceScript.used();
+                        break;
+                    }
+                }else{
+                    if (key.contains(sourceScript.getAlia()+".")) {
+                        sourceScript.used();
+                        break;
+                    }
+                }
+            }
+        }
+
+        int size = sourceScripts.size();
+        for (int i = size -1; i>=0; i--) {
+            SourceScript sourceScript = sourceScripts.get(i);
+            if (!sourceScript.isUsed() && !sourceScript.isTargeted())
+                continue;
+            for (int j = i-1; j>=0 ;j--){
+                SourceScript sc = sourceScripts.get(j);
+                if (sourceScript.getSource().equals(sc.getSource()))
+                    continue;
+                boolean flag = false;
+                for (On on : sourceScript.getOnList()) {
+                    if (on == null || on.getJoinFrom() == null)
+                        continue;
+                    if (sc.alia().equals(on.getJoinFrom().getAlia())){
+                        sc.targeted();
+                        flag = true;
+                        break;
+                    }
+                }
+                if (flag) break;
+            }
+        }
+
+        Iterator<SourceScript> ite = sourceScripts.iterator();
+        while (ite.hasNext()){
+            SourceScript sourceScript = ite.next();
+            if (!sourceScript.isUsed() && !sourceScript.isTargeted())
+                ite.remove();
         }
     }
 
-    private void sourceScript(StringBuilder sb, Criteria criteria) {
-        String script = criteria.sourceScript().trim();
+    private void sourceScript(SqlBuilder sb, Criteria criteria) {
 
-        if (script.startsWith(SqlScript.FROM) || script.startsWith(SqlScript.FROM.toLowerCase())) {
-            script = script.replaceFirst(SqlScript.FROM, SqlScript.NONE);
+        sb.sbSource.append(SqlScript.SPACE);
+
+        String script = null;
+        if (criteria instanceof Criteria.ResultMappedCriteria) {
+            Criteria.ResultMappedCriteria rmc = (Criteria.ResultMappedCriteria) criteria;
+
+            if (rmc.getSourceScripts().isEmpty()){// builderSource null
+                script = criteria.sourceScript();//string -> list<>
+                if ((! rmc.resultAllScript().trim().equals("*")) && script.contains(".")){
+                    optimizeSourceScript(rmc.getSourceScripts(), sb.conditionList);
+                    script = rmc.getSourceScripts().stream().map(SourceScript::sql).collect(Collectors.joining()).trim();
+                }
+            }else{
+                if (! rmc.resultAllScript().trim().equals("*")){
+                    optimizeSourceScript(rmc.getSourceScripts(), sb.conditionList);
+                }
+                script = rmc.getSourceScripts().stream().map(SourceScript::sql).collect(Collectors.joining()).trim();
+            }
+
+            Assert.notNull(script,"Not set sourceScript of ResultMappedBuilder");
+            sb.sbSource.append(SqlScript.FROM).append(SqlScript.SPACE);
+
+        }else {
+            script = criteria.sourceScript();
+            if (!script.startsWith(SqlScript.FROM) || !script.startsWith(SqlScript.FROM.toLowerCase()))
+                sb.sbSource.append(SqlScript.FROM).append(SqlScript.SPACE);
         }
 
-        sb.append(SqlScript.SPACE).append(SqlScript.FROM).append(SqlScript.SPACE);
 
-        mapping(script, criteria, sb);
-
+        mapping(script, criteria, sb.sbSource);
     }
 
-    private StringBuilder count(StringBuilder sb, Criteria criteria) {
-        if (!criteria.isScroll()) {
-            StringBuilder countSb = new StringBuilder();
-            countSb.append(SqlScript.SELECT).append(SqlScript.SPACE).append(criteria.getCountDistinct()).append(SqlScript.SPACE).append(sb);
-            return countSb;
+    private void forceIndex(SqlBuilder sqlBuilder, Criteria criteria) {
+        if (StringUtil.isNullOrEmpty(criteria.getForceIndex()))
+            return;
+        sqlBuilder.sbCondition.append("FORCE INDEX(" + criteria.getForceIndex() + ")");
+        sqlBuilder.conditionList.add(criteria.getForceIndex());
+    }
+
+    private SqlBuilder count(StringBuilder sbCondition, Criteria criteria) {
+        if (!criteria.isTotalRowsIgnored()) {
+            SqlBuilder sqlBuilder = SqlBuilder.get();
+            sqlBuilder.sbResult.append(SqlScript.SELECT).append(SqlScript.SPACE).append(criteria.getCountDistinct()).append(SqlScript.SPACE);
+            sqlBuilder.sbCondition.append(sbCondition.toString());
+            return sqlBuilder;
         }
         return null;
     }
 
-    private void sort(StringBuilder sb, Criteria criteria) {
+    private void sort(SqlBuilder sb, Criteria criteria) {
 
         if (criteria.isFixedSort())
             return;
@@ -326,34 +654,36 @@ public class SqlCriteriaParser implements CriteriaParser {
         List<Sort> sortList = criteria.getSortList();
         if (sortList != null && !sortList.isEmpty()) {
 
-            sb.append(Conjunction.ORDER_BY.sql());
+            sb.sbCondition.append(ConjunctionAndOtherScript.ORDER_BY.sql());
             int size = sortList.size();
             int i = 0;
             for (Sort sort : sortList) {
                 String orderBy = sort.getOrderBy();
                 String mapper = mapping(orderBy, criteria);
-                sb.append(mapper).append(SqlScript.SPACE);
+                sb.sbCondition.append(mapper).append(SqlScript.SPACE);
+                sb.conditionList.add(orderBy);
                 Direction direction = sort.getDirection();
                 if (direction == null) {
-                    sb.append(Direction.DESC);
+                    sb.sbCondition.append(Direction.DESC);
                 } else {
-                    sb.append(direction);
+                    sb.sbCondition.append(direction);
                 }
                 i++;
                 if (i < size) {
-                    sb.append(SqlScript.COMMA).append(SqlScript.SPACE);
+                    sb.sbCondition.append(SqlScript.COMMA).append(SqlScript.SPACE);
                 }
             }
         }
 
     }
 
-    private void x(StringBuilder sb, List<Criteria.X> xList, CriteriaCondition criteria, boolean isWhere) {
+    private void x(StringBuilder sb, List<Criteria.X> xList, CriteriaCondition criteria, List<String> conditionList, boolean isWhere) {
         for (Criteria.X x : xList) {
 
-            if (x.getPredicate() == Predicate.X) {
+            if (x.getPredicate() == PredicateAndOtherScript.X) {
                 appendConjunction(sb, x, criteria, isWhere);
                 sb.append(x.getKey());
+                conditionList.add(x.getKey());
                 Object valueObject = x.getValue();
                 if (valueObject != null) {
                     if (valueObject instanceof List) {
@@ -377,31 +707,31 @@ public class SqlCriteriaParser implements CriteriaParser {
                 if (x.getSubList() != null) {
                     StringBuilder xSb = new StringBuilder();
 
-                    x(xSb, subList, criteria, false);//sub concat
+                    x(xSb, subList, criteria, conditionList,false);//sub concat
 
                     String script = xSb.toString();
                     if (StringUtil.isNotNull(script)) {
-                        final String and = Conjunction.AND.sql();
-                        final String or = Conjunction.OR.sql();
+                        final String and = ConjunctionAndOtherScript.AND.sql();
+                        final String or = ConjunctionAndOtherScript.OR.sql();
                         if (script.startsWith(and)) {
                             script = script.replaceFirst(and, SqlScript.NONE);
                         } else if (script.startsWith(or)) {
                             script = script.replaceFirst(or, SqlScript.NONE);
                         }
-                        x.setScript(Predicate.SUB_BEGIN.sql() + script + Predicate.SUB_END.sql());
+                        x.setScript(PredicateAndOtherScript.SUB_BEGIN.sql() + script + PredicateAndOtherScript.SUB_END.sql());
                     }
                 }
 
             }
 
-            if (Predicate.SUB_BEGIN == x.getPredicate()) {
+            if (PredicateAndOtherScript.SUB_BEGIN == x.getPredicate()) {
                 continue;
-            } else if (Predicate.SUB_END == x.getPredicate()) {
+            } else if (PredicateAndOtherScript.SUB_END == x.getPredicate()) {
                 continue;
             }
 
             if (StringUtil.isNotNull(x.getKey())) {
-                if (x.getKey().equals(Predicate.SUB.sql())) {
+                if (x.getKey().equals(PredicateAndOtherScript.SUB.sql())) {
                     if (Objects.nonNull(x.getScript())) {
 
                         appendConjunction(sb, x, criteria, isWhere);
@@ -410,7 +740,7 @@ public class SqlCriteriaParser implements CriteriaParser {
                     continue;
                 }
             }
-            x(x, criteria, isWhere);
+            x(x, criteria, conditionList,isWhere);
 
             if (Objects.nonNull(x.getScript())) {
                 sb.append(x.getScript());
@@ -419,14 +749,84 @@ public class SqlCriteriaParser implements CriteriaParser {
 
     }
 
-    private void x(StringBuilder sb, List<Criteria.X> xList, Criteria criteria) {
+    private void filter(Criteria criteria){
+        if (criteria instanceof Criteria.ResultMappedCriteria){
+            List<Criteria.X> xList = criteria.getListX();
+            filter0(xList,criteria);
+        }
+    }
+
+    private void filter0(List<Criteria.X> xList, Criteria criteria){
+        Iterator<Criteria.X> ite = xList.iterator();
+        while (ite.hasNext()) {
+            Criteria.X x = ite.next();
+            PredicateAndOtherScript p = x.getPredicate();
+            String key = x.getKey();
+            if (p == PredicateAndOtherScript.EQ
+                    || p == PredicateAndOtherScript.NE
+                    || p == PredicateAndOtherScript.GT
+                    || p == PredicateAndOtherScript.GTE
+                    || p == PredicateAndOtherScript.LT
+                    || p == PredicateAndOtherScript.LTE) {
+
+                if (key.contains(".")){
+                    String[] arr = key.split("\\.");
+                    String alia = arr[0];
+                    String clzName = criteria.getAliaMap().get(alia);
+                    if (clzName == null)
+                        clzName = alia;
+                    Parsed parsed = Parser.get(clzName);
+                    if (BeanUtilX.isBaseType_0(arr[1],x.getValue(),parsed)){
+                        ite.remove();
+                    }
+                }else{
+                    Parsed parsed = criteria.getParsed();
+                    if (BeanUtilX.isBaseType_0(key,x.getValue(),parsed)){
+                        ite.remove();
+                    }
+                }
+            }else if (p == PredicateAndOtherScript.IN
+            || p == PredicateAndOtherScript.NOT_IN) {
+
+                List valueList = (List)x.getValue();
+                if (valueList.size() > 1)
+                    continue;
+
+                if (key.contains(".")){
+                    String[] arr = key.split("\\.");
+                    String alia = arr[0];
+                    String clzName = criteria.getAliaMap().get(alia);
+                    if (clzName == null)
+                        clzName = alia;
+                    Parsed parsed = Parser.get(clzName);
+
+                    if (BeanUtilX.isBaseType_0(arr[1],valueList.get(0),parsed)){
+                        ite.remove();
+                    }
+
+                }else{
+                    Parsed parsed = criteria.getParsed();
+                    if (BeanUtilX.isBaseType_0(key,valueList.get(0),parsed)){
+                        ite.remove();
+                    }
+                }
+
+            }
+            List<Criteria.X> subList = x.getSubList();
+            if (subList == null || subList.isEmpty())
+                continue;
+            filter0(subList,criteria);
+        }
+    }
+
+    private void x(SqlBuilder sqlBuilder, List<Criteria.X> xList, Criteria criteria) {
 
         StringBuilder xsb = new StringBuilder();
-        x(xsb, xList, criteria, true);
+        x(xsb, xList, criteria, sqlBuilder.conditionList,true);
 
         String script = xsb.toString();
 
-        mapping(script, criteria, sb);
+        mapping(script, criteria, sqlBuilder.sbCondition);
 
     }
 
@@ -438,7 +838,7 @@ public class SqlCriteriaParser implements CriteriaParser {
             Criteria criteria = (Criteria) criteriaBuilder;
             if (isWhere && criteria.isWhere()) {
                 criteria.setWhere(false);
-                sb.append(Conjunction.WHERE.sql());
+                sb.append(ConjunctionAndOtherScript.WHERE.sql());
             } else {
                 sb.append(x.getConjunction().sql());
             }
@@ -447,24 +847,27 @@ public class SqlCriteriaParser implements CriteriaParser {
         }
     }
 
-    private void x(Criteria.X x, CriteriaCondition criteria, boolean isWhere) {
+    private void x(Criteria.X x, CriteriaCondition criteria, List<String> conditionList, boolean isWhere) {
 
         StringBuilder sb = new StringBuilder();
-        Predicate p = x.getPredicate();
+        PredicateAndOtherScript p = x.getPredicate();
         Object v = x.getValue();
 
-        if (p == Predicate.IN || p == Predicate.NOT_IN) {
+        if (p == PredicateAndOtherScript.IN || p == PredicateAndOtherScript.NOT_IN) {
 
             appendConjunction(sb, x, criteria, isWhere);
 
             sb.append(x.getKey()).append(p.sql());
+            conditionList.add(x.getKey());
             List<Object> inList = (List<Object>) v;
             in(sb, inList);
-        } else if (p == Predicate.BETWEEN) {
+        } else if (p == PredicateAndOtherScript.BETWEEN) {
 
             appendConjunction(sb, x, criteria, isWhere);
 
             sb.append(x.getKey()).append(p.sql());
+            conditionList.add(x.getKey());
+
             between(sb);
 
             MinMax minMax = (MinMax) v;
@@ -472,11 +875,12 @@ public class SqlCriteriaParser implements CriteriaParser {
             valueList.add(minMax.getMin());
             valueList.add(minMax.getMax());
 
-        } else if (p == Predicate.IS_NOT_NULL || p == Predicate.IS_NULL) {
+        } else if (p == PredicateAndOtherScript.IS_NOT_NULL || p == PredicateAndOtherScript.IS_NULL) {
 
             appendConjunction(sb, x, criteria, isWhere);
 
             sb.append(v).append(p.sql());
+            conditionList.add(v.toString()); //v is not null || v is null
 
         } else {
             if (StringUtil.isNullOrEmpty(x.getKey()))
@@ -486,6 +890,7 @@ public class SqlCriteriaParser implements CriteriaParser {
 
             Class clz = v.getClass();
             sb.append(x.getKey()).append(x.getPredicate().sql());
+            conditionList.add(x.getKey());
             if (clz == String.class) {
                 String str = v.toString();
                 if (str.startsWith(SqlScript.WELL_NO) && str.endsWith(SqlScript.WELL_NO)) {
@@ -499,7 +904,8 @@ public class SqlCriteriaParser implements CriteriaParser {
                 sb.append(SqlScript.PLACE_HOLDER);
             }
 
-            if (clz.getSuperclass().isEnum() || clz.isEnum()) {
+            //if (BeanUtil.isEnum(clz) || BeanUtil.isEnum(clz.getSuperclass())) {
+            if (BeanUtil.isEnum(clz)) {
                 try {
                     criteria.getValueList().add(((Enum) v).name());
                 } catch (Exception e) {
@@ -514,7 +920,7 @@ public class SqlCriteriaParser implements CriteriaParser {
 
     private void between(StringBuilder sb) {
 
-        sb.append(SqlScript.PLACE_HOLDER).append(Conjunction.AND.sql()).append(SqlScript.PLACE_HOLDER);
+        sb.append(SqlScript.PLACE_HOLDER).append(ConjunctionAndOtherScript.AND.sql()).append(SqlScript.PLACE_HOLDER);
 
     }
 
@@ -527,36 +933,20 @@ public class SqlCriteriaParser implements CriteriaParser {
 
         Class<?> vType = v.getClass();
 
-        boolean isNumber = (vType == long.class || vType == int.class || vType == Long.class || vType == Integer.class);
-
-        sb.append(SqlScript.LEFT_PARENTTHESIS).append(SqlScript.SPACE);//"( "
-
-        int length = inList.size();
-        if (isNumber) {
-            for (int j = 0; j < length; j++) {
-                Object value = inList.get(j);
-                if (value == null)
-                    continue;
-                sb.append(value);
-                if (j < length - 1) {
-                    sb.append(SqlScript.COMMA);
-                }
-            }
-        } else {
-            for (int j = 0; j < length; j++) {
-                Object value = inList.get(j);
-                if (value == null || StringUtil.isNullOrEmpty(value.toString()))
-                    continue;
-                sb.append(SqlScript.SINGLE_QUOTES).append(value).append(SqlScript.SINGLE_QUOTES);//'string'
-                if (j < length - 1) {
-                    sb.append(SqlScript.COMMA);
-                }
-            }
-        }
-
-        sb.append(SqlScript.SPACE).append(SqlScript.RIGHT_PARENTTHESIS);//"  )"
+        SqlUtil.buildIn(sb,vType,inList);
 
     }
 
 
+    public static class SqlBuilder {
+
+        private StringBuilder sbResult = new StringBuilder();
+        private StringBuilder sbSource = new StringBuilder();
+        private StringBuilder sbCondition = new StringBuilder();
+        private List<String> conditionList = new ArrayList<>();
+
+        public static SqlBuilder get(){
+            return new SqlBuilder();
+        }
+    }
 }

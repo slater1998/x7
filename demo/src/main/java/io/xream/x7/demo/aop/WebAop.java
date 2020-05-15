@@ -1,21 +1,26 @@
 package io.xream.x7.demo.aop;
 
 
+import io.xream.x7.common.util.ExceptionUtil;
+import io.xream.x7.util.TimeUtil;
+import io.xream.x7.common.web.ViewEntity;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
-import io.xream.x7.common.util.ExceptionUtil;
-import io.xream.x7.common.util.TimeUtil;
-import io.xream.x7.common.web.ViewEntity;
-import io.xream.x7.repository.dao.Tx;
+import org.springframework.core.annotation.Order;
 
 @Aspect
 @Configuration
+@Order(-1)
 public class WebAop {
 
+
+	private final static Logger logger = LoggerFactory.getLogger(WebAop.class);
 
 	@Pointcut("execution(public * io.xream.x7.demo.controller.*.*(..))")
 	public void cut() {
@@ -25,43 +30,14 @@ public class WebAop {
 	@Around("cut()")
 	public Object around(ProceedingJoinPoint proceedingJoinPoint) {
 
-		Object[] argArr = proceedingJoinPoint.getArgs();
-//		Passport passport = null;
-//		{
-//			/*
-//			 * isSignIn, FIXME 移到网关
-//			 */
-//			if (argArr != null) {
-//				for (Object arg : argArr) {
-//					if (arg instanceof Tokened) {
-//						try {
-//							passport = PassportUtilX.getPassport((Tokened) arg);
-//							/*
-//							 * 数据权限
-//							 */
-//							if (arg instanceof DataPermission) {
-//								DataPermission.Chain.beforeHandle((DataPermission)arg, passport.getDataPermissionValue());
-//							}
-//							break;
-//						} catch (Passport.PassportException e) {
-//							Passport.PassportException pe = (Passport.PassportException) e;
-//							return pe.getViewEntity();
-//						}
-//					}
-//				}
-//			}
-//		}
-
 		org.aspectj.lang.Signature signature = proceedingJoinPoint.getSignature();
 		MethodSignature ms = ((MethodSignature) signature);
 
 
 		{
-			/*
-			 * TX
-			 */
+
 			long startTime = TimeUtil.now();
-			Tx.begin();
+
 			try {
 				Object obj = null;
 
@@ -73,10 +49,10 @@ public class WebAop {
 					obj = proceedingJoinPoint.proceed();
 				}
 
-				Tx.commit();
+
 				long endTime = TimeUtil.now();
 				long handledTimeMillis = endTime - startTime;
-				System.out.println("_______Transaction end, cost time: " + (handledTimeMillis) + "ms");
+				System.out.println("________Transaction end, cost time: " + (handledTimeMillis) + "ms");
 				if (obj instanceof ViewEntity){
 					ViewEntity ve = (ViewEntity)obj;
 					ve.setHandledTimeMillis(handledTimeMillis);
@@ -84,8 +60,9 @@ public class WebAop {
 
 				return obj;
 			} catch (Throwable e) {
-				e.printStackTrace();
-				Tx.rollback();
+
+				System.out.println("________Transaction rollback:" + ExceptionUtil.getMessage(e));
+
 
 //				if(e instanceof HystrixRuntimeException){
 //					return ViewEntity.toast("服务繁忙, 请稍后");

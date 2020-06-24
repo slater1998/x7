@@ -25,7 +25,7 @@ public class AppTest {
     @Autowired
     private DarkRepositoryTest darkRepositoryTest;
 
-    private Executor executor = Executors.newFixedThreadPool(11);
+//    private Executor executor = Executors.newFixedThreadPool(11);
 
     @Test
     public void  testAll(){
@@ -38,7 +38,7 @@ public class AppTest {
 
 //        xxxTest.inOrder();
 //        xxxTest.testOrderFind();
-//        xxxTest.testOrderFindByAlia();
+        xxxTest.testOrderFindByAlia();
 
 //        xxxTest.testReyClient();
 //        xxxTest.testTime();
@@ -47,6 +47,7 @@ public class AppTest {
 //        xxxTest.testCriteria();
 //        xxxTest.testCriteria();
 //        xxxTest.testCriteria();
+        xxxTest.testListCriteria();
 
 
 
@@ -68,20 +69,18 @@ public class AppTest {
 
 //        repositoryTest.refresh();
 
-//        xxxTest.testFindByResultMapped();
+//        xxxTest.testListPlainValue();
 
 //        xxxTest.testAlia();
 //        xxxTest.testAlia();
 //        xxxTest.testAlia();
 //        xxxTest.distinct();
 //        xxxTest.distinct();
+//
 
-//        xxxTest.testFindByResultMapped();
-//        xxxTest.testFindByResultMapped();
-//        xxxTest.testFindByResultMapped();
 //        xxxTest.testOne();
 //        xxxTest.testListCriteria();
-        xxxTest.refreshByCondition();
+//        xxxTest.refreshByCondition();
 //        xxxTest.testListCriteria();
 //        xxxTest.testRemove();
 //        xxxTest.testListCriteria();
@@ -92,13 +91,12 @@ public class AppTest {
 //        xxxTest.testListCriteria();
 //        xxxTest.create();
 //        xxxTest.createBatch();
-//        xxxTest.refresh()
 //        xxxTest.testRemove();
 //        xxxTest.testRestTemplate();
 //        xxxTest.testList();
 //        xxxTest.testList();
 //        xxxTest.testList();
-//        xxxTest.testLock();
+        xxxTest.testLock();
 
 //        xxxTest.in();
 //        xxxTest.in();
@@ -109,11 +107,13 @@ public class AppTest {
 //        xxxTest.testOneKeyRemote();
 //        xxxTest.testEnum();
 
-//        xxxTest.removeOrRefreshOrCreate();
+//        xxxTest.removeRefreshCreate();
 //
 //        xxxTest.testCacheGet();
 
 //        xxxTest.testFallbackOnly("test");
+
+//        xxxTest.testTemporaryTable();
 
     }
 

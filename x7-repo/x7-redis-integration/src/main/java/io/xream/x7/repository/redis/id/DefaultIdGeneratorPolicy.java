@@ -16,16 +16,29 @@
  */
 package io.xream.x7.repository.redis.id;
 
-import io.xream.x7.repository.id.IdGenerator;
+import io.xream.x7.common.bean.*;
+import io.xream.x7.common.repository.X;
+import io.xream.x7.common.util.VerifyUtil;
+import io.xream.x7.repository.BaseRepository;
 import io.xream.x7.repository.id.IdGeneratorPolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
+import org.springframework.util.IdGenerator;
 
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class DefaultIdGeneratorPolicy implements IdGeneratorPolicy {
+
+    private Logger logger = LoggerFactory.getLogger(IdGeneratorPolicy.class);
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
@@ -35,40 +48,73 @@ public class DefaultIdGeneratorPolicy implements IdGeneratorPolicy {
 
     @Override
     public long createId(String clzName) {
-
         return this.stringRedisTemplate.opsForHash().increment(ID_MAP_KEY,clzName,1);
-
     }
+
 
     @Override
-    public void onStart(List<IdGenerator> idGeneratorList) {
+    public void onStart(List<BaseRepository> repositoryList) {
+        if (repositoryList == null)
+            return;
 
-            System.out.println("\n" + "----------------------------------------");
+        long startTme = System.currentTimeMillis();
+        logger.info("x7-repo/x7-id-generator starting.... \n");
 
-            for (IdGenerator generator : idGeneratorList) {
-                String name = generator.getClzName();
-                long maxId = generator.getMaxId();
+        final String idGeneratorScript = "local hk = KEYS[1] " +
+                "local key = KEYS[2] " +
+                "local id = ARGV[1] " +
+                "local existId = redis.call('hget',hk,key) " +
+                "if tonumber(id) > tonumber(existId) " +
+                "then " +
+                "redis.call('hset',hk,key,tostring(id)) " +
+                "return tonumber(id) "+
+                "end " +
+                "return tonumber(existId)";
 
-                String idInRedis = null;
-                Object obj = this.stringRedisTemplate.opsForHash().get(IdGeneratorPolicy.ID_MAP_KEY, name);
+        RedisScript<Long> redisScript = new DefaultRedisScript<Long>() {
 
-                if (obj != null) {
-                    idInRedis =  obj.toString().trim();
-                }
-
-                System.out.println(name + ",test, idInDB = " + maxId + ", idInRedis = " + idInRedis);
-
-
-                if (idInRedis == null) {
-                    this.stringRedisTemplate.opsForHash().put(IdGeneratorPolicy.ID_MAP_KEY, name, String.valueOf(maxId));
-                } else if (idInRedis != null && maxId > Long.valueOf(idInRedis)) {
-                    this.stringRedisTemplate.opsForHash().put(IdGeneratorPolicy.ID_MAP_KEY, name, String.valueOf(maxId));
-                }
-
-                System.out.println(name + ",final, idInRedis = " + this.stringRedisTemplate.opsForHash().get(IdGeneratorPolicy.ID_MAP_KEY, name));
-
-
+            @Override
+            public String getSha1(){
+                return VerifyUtil.toMD5("id_map_key");
             }
-            System.out.println("----------------------------------------" + "\n");
+
+            @Override
+            public Class<Long> getResultType() {
+                return Long.class;
+            }
+
+            @Override
+            public String getScriptAsString() {
+                return  idGeneratorScript;
+            }
+        };
+
+        for (BaseRepository baseRepository : repositoryList) {
+            CriteriaBuilder.ResultMappedBuilder builder = CriteriaBuilder.buildResultMapped();
+            Class clzz = baseRepository.getClz();
+            Parsed parsed = Parser.get(clzz);
+            String key = parsed.getKey(X.KEY_ONE);
+            BeanElement be = parsed.getElement(key);
+            if (be.clz == String.class)
+                continue;
+            builder.reduce(ReduceType.MAX, be.property).paged().ignoreTotalRows();
+            Criteria.ResultMappedCriteria resultMappedCriteria = builder.get();
+
+            List<Long> idList = baseRepository.listPlainValue(Long.class,resultMappedCriteria);
+            Long maxId = idList.stream().filter(id -> id != null).findFirst().orElse(0L);
+            String name = baseRepository.getClz().getName();
+
+            logger.info("Db    : " + name + ".maxId = " + maxId);
+
+            List<String> keys = Arrays.asList(IdGeneratorPolicy.ID_MAP_KEY,name);
+            long result = this.stringRedisTemplate.execute(redisScript,keys,String.valueOf(maxId));
+
+            logger.info("Redis : " + name + ".maxId = " + result);
+
+        }
+        logger.info("..................................................");
+        long endTime = System.currentTimeMillis();
+        logger.info("x7-repo/x7-id-generator started, cost time: " + (endTime-startTme) +"ms\n\n");
     }
+
 }

@@ -19,7 +19,7 @@ package io.xream.x7.repository.cache;
 import io.xream.x7.common.bean.Parsed;
 import io.xream.x7.common.bean.Parser;
 import io.xream.x7.common.bean.condition.InCondition;
-import io.xream.x7.common.util.BeanUtilX;
+import io.xream.x7.common.filter.BaseTypeFilter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +31,6 @@ public interface InOptimization {
 
     static  <T> List<T> in(InCondition inCondition, CacheableRepository repository){
 
-        Parsed parsed = Parser.get(inCondition.getClz());
         if (inCondition.getInList().isEmpty())
             return new ArrayList<T>();
 
@@ -40,7 +39,8 @@ public interface InOptimization {
         for (Object obj : inCondition.getInList()) {
             if (Objects.isNull(obj))
                 continue;
-            if (BeanUtilX.isBaseType_0(inCondition.getProperty(), obj, parsed))
+            Parsed parsed = Parser.get(inCondition.getClz());
+            if (BaseTypeFilter.isBaseType_0(inCondition.getProperty(), obj, parsed))
                 continue;
             if (!inList.contains(obj)) {
                 inList.add(obj);

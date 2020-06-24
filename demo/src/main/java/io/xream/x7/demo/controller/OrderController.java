@@ -8,6 +8,7 @@ import io.xream.x7.common.web.ViewEntity;
 import io.xream.x7.demo.OrderItemRepository;
 import io.xream.x7.demo.OrderRepository;
 import io.xream.x7.demo.bean.Order;
+import io.xream.x7.demo.bean.OrderType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -41,16 +42,23 @@ public class OrderController {
     @RequestMapping("/find")
     public ViewEntity find(){
         CriteriaBuilder.ResultMappedBuilder builder = CriteriaBuilder.buildResultMapped();
-        builder.distinct("order.id");
-        builder.resultKeyFunction(FunctionAlia.wrap("order","at"),"YEAR(?)","order.createAt");
-        builder.and().eq("order.name","test");
-//        builder.and().eq("orderItem.name","test");
-//        builder.and().nonNull("orderItem.name");
-//        builder.and().in("orderItem.name", Arrays.asList("xxx"));
-        builder.and().beginSub().gt("order.createAt",System.currentTimeMillis() - 1000000)
-                .and().lt("order.createAt",System.currentTimeMillis()).endSub();
-        builder.sourceScript("from order inner join orderItem on orderItem.orderId = order.id and orderItem.name = order.name");
-        builder.paged().ignoreTotalRows().page(1).rows(10).sort("order.id", Direction.DESC);
+        builder.resultWithDottedKey().distinct("o.id");
+        builder.resultKeyFunction(ResultKeyAlia.of("o","at"),"YEAR(?)","o.createAt");
+        builder.resultKeyFunction(ResultKeyAlia.of("o","xxx"),"CASE WHEN ISNULL(?) THEN 0 ELSE YEAR(?) END","o.name","o.createAt");
+        builder.eq("o.name","test");
+        builder.and().eq("i.name","test");
+//        builder.and().nonNull("l.log");
+//        builder.and().nonNull("i.name");
+//        builder.and().in("i.name", Arrays.asList("xxx"));
+//        builder.and().beginSub().gt("o.createAt",System.currentTimeMillis() - 1000000)
+//                .and().lt("o.createAt",System.currentTimeMillis()).endSub();
+//        builder.sourceScript().source("order").alia("o");
+//        builder.sourceScript().source("orderItem").joinType(JoinType.INNER_JOIN).on("orderId",JoinFrom.of("order","id"))
+//                .more().x("orderItem.name = order.name");
+        builder.sourceScript("FROM order o INNER JOIN orderItem i ON o.id = i.orderId" +
+                " INNER JOIN orderLog l ON o.id = l.orderId");
+        builder.withoutOptimization();
+        builder.paged().ignoreTotalRows().page(1).rows(10).sort("o.id", Direction.DESC);
 
 
         Criteria.ResultMappedCriteria criteria = builder.get();
@@ -64,21 +72,23 @@ public class OrderController {
     @RequestMapping("/findByAlia")
     public ViewEntity findBuAlia(){
         CriteriaBuilder.ResultMappedBuilder builder = CriteriaBuilder.buildResultMapped();
-        builder.distinct("o.id");
-        builder.and().eq("o.name","test");
-        builder.and().in("i.name", Arrays.asList("test"));
-        builder.and().nonNull("i.name");
-        builder.and().nonNull("l.log");
-//        builder.and().beginSub().gt("o.createAt",System.currentTimeMillis() - 1000000)
-//                .and().lt("o.createAt",System.currentTimeMillis()).endSub();
-//        builder.sourceScript("from order o INNER join orderItem i ON i.orderId != o.id AND i.name = o.name");
-
+        builder.resultKey("o.name").distinct("o.id").reduce(ReduceType.SUM,"i.quantity",Having.of(Op.LT,10));
+        builder.beginSub().eq("o.name",null).endSub();
+        builder.in("i.name", Arrays.asList("test"));
+        builder.nonNull("i.name").nonNull("l.log");
         builder.sourceScript().source("order").alia("o");
-        builder.sourceScript().source("orderItem").alia("i").joinType(JoinType.INNER_JOIN)
-                .on("orderId", On.Op.NE,JoinFrom.wrap("o","id"))
-                .onOr("name",On.Op.EQ, JoinFrom.wrap("o","name"));
-        builder.sourceScript().source("orderLog").alia("l").joinType(JoinType.LEFT_JOIN)
-                .on("orderId", On.Op.EQ,JoinFrom.wrap("o","id"));
+        builder.sourceScript().source("orderItem").alia("i").joinType(JoinType.LEFT_JOIN)
+                .on("orderId", JoinFrom.of("o","id"))
+                .more().or()
+                    .beginSub()
+                        .x("i.orderId > ? and YEAR(o.createAt) >= ?", 2,2020).or().lte("i.orderId",2)
+                            .beginSub().eq("i.type", OrderType.SINGLE).endSub()
+                        .or().eq("i.type", null)
+                            .beginSub().eq("o.type",OrderType.SINGLE).endSub().or()
+                    .endSub().x("i.orderId > 1");
+        builder.sourceScript().source("orderLog").alia("l").joinType(JoinType.INNER_JOIN)
+                .on("orderId", JoinFrom.of("o","id"));
+        builder.groupBy("o.id");
 
         builder.paged().ignoreTotalRows().page(1).rows(10).sort("o.id", Direction.DESC);
 
@@ -90,10 +100,9 @@ public class OrderController {
     }
 
     public ViewEntity in(){
-        InCondition inCondition = new InCondition();
-        inCondition.setProperty("name");
-        inCondition.setInList(Arrays.asList("xxx"));
-        List<Order> list = this.orderRepository.in(inCondition);
+        List<Order> list = this.orderRepository.in(
+                InCondition.wrap("name",Arrays.asList("xxx"))
+        );
         return ViewEntity.ok(list);
     }
 

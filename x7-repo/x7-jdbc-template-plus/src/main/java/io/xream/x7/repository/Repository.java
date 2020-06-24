@@ -89,6 +89,8 @@ public interface Repository extends QueryForCache{
 	 */
 	List<Map<String,Object>> list(Criteria.ResultMappedCriteria resultMapped);
 
+	<K> List<K> listPlainValue(Class<K> clzz, Criteria.ResultMappedCriteria resultMapped);
+
 	<T> List<T> list(Criteria criteria);
 
 	boolean createBatch(List<? extends Object> objList);
@@ -100,4 +102,5 @@ public interface Repository extends QueryForCache{
 	<T> void findToHandle(Criteria criteria, RowHandler<T> handler);
 	void findToHandle(Criteria.ResultMappedCriteria resultMappedCriteria, RowHandler<Map<String,Object>> handler);
 
+	<T> List<T> listByClzz(Class<T> clzz);
 }

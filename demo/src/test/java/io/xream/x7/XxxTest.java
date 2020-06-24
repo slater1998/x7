@@ -10,14 +10,14 @@ import io.xream.x7.common.bean.condition.RefreshCondition;
 import io.xream.x7.common.util.JsonX;
 import io.xream.x7.common.web.Direction;
 import io.xream.x7.common.web.ViewEntity;
-import io.xream.x7.demo.ro.CatRO;
-import io.xream.x7.demo.bean.Cat;
 import io.xream.x7.demo.bean.CatTest;
-import io.xream.x7.demo.bean.Order;
-import io.xream.x7.demo.bean.TestBoo;
+import io.xream.x7.demo.bean.*;
+import io.xream.x7.demo.controller.CatEggController;
 import io.xream.x7.demo.controller.OrderController;
 import io.xream.x7.demo.controller.XxxController;
 import io.xream.x7.demo.remote.TestServiceRemote;
+import io.xream.x7.demo.ro.CatRO;
+import io.xream.x7.demo.service.DogService;
 import io.xream.x7.fallback.FallbackOnly;
 import io.xream.x7.reyc.api.ReyTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,16 +25,26 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 
 @Component
 public class XxxTest {
+
+        private Executor executor = Executors.newFixedThreadPool(2);
+
+    @Autowired
+    private DogService dogService;
 
     @Autowired
     private ReyTemplate reyTemplate;
@@ -49,6 +59,11 @@ public class XxxTest {
     @Autowired
     private DistributionLockTester distributionLockTester;
 
+    @Autowired
+    private CatEggController catEggController;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     public  void refreshByCondition() {
 
@@ -56,11 +71,11 @@ public class XxxTest {
 
     }
 
-    public  void testFindByResultMapped() {
+    public  void testListPlainValue() {
 
         CatRO cat = new CatRO();
 
-        ViewEntity ve = this.controller.testFindByResultMapped(cat);
+        ViewEntity ve = this.controller.testListPlainValue(cat);
 
         System.out.println("\n______Result: " + ve);
 
@@ -103,7 +118,11 @@ public class XxxTest {
 
     public void distinct(){
 
-        ViewEntity ve = this.controller.distinct(null);
+        CatRO ro = new CatRO();
+        ro.setOrderBy("catTest.id");
+        ro.setDirection(Direction.DESC);
+        ro.setTotalRowsIgnored(true);
+        ViewEntity ve = this.controller.distinct(ro);
         System.out.println(ve);
     }
 
@@ -195,21 +214,6 @@ public class XxxTest {
         return ViewEntity.ok(result);
     }
 
-    public void testLock(){
-        Cat cat = new Cat();
-        cat.setId(1000L);
-        cat.setType("LOCK--------sss");
-        Criteria.X x = new Criteria.X();
-//        cat.getListX().add(x);
-        CasualWorker.accept(new Runnable() {
-            @Override
-            public void run() {
-                distributionLockTester.test("_test_cat_");
-            }
-        });
-        distributionLockTester.test("_test_cat_");
-    }
-
 
     public void testList(){
         this.controller.list();
@@ -260,8 +264,8 @@ public class XxxTest {
         this.controller.refreshOrCreat(cat);
     }
 
-    public void removeOrRefreshOrCreate(){
-        this.controller.removeOrRefreshOrCreate();
+    public void removeRefreshCreate(){
+        this.controller.removeRefreshCreate();
     }
 
     public  void testCacheGet(){
@@ -337,5 +341,40 @@ public class XxxTest {
     public void inOrder(){
         this.orderController.in();
     }
+
+    public void testTemporaryTable(){
+
+        this.catEggController.test();
+
+    }
+
+    public void testLock(){
+        DogTest dogTest = new DogTest();
+        dogTest.setId(3);
+//        this.executor.execute(new Runnable() {
+//            @Override
+//            public void run() {
+//                dogService.lock5(dogTest);
+//            }
+//        });
+//        this.executor.execute(new Runnable() {
+//            @Override
+//            public void run() {
+//                dogService.lock5(dogTest);
+//            }
+//        });
+//
+//        try{
+//            TimeUnit.MILLISECONDS.sleep(1000);
+//        }catch (Exception e){
+//            e.printStackTrace();
+//        }
+//
+//        dogService.lock5(dogTest);
+
+        dogService.lock0(dogTest);
+
+    }
+
 
 }

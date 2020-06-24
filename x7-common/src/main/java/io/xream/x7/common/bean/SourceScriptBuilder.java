@@ -27,12 +27,19 @@ public interface SourceScriptBuilder {
 
     SourceScriptBuilder joinType(JoinType joinType);
 
-    SourceScriptBuilder on(String key, On.Op op, JoinFrom joinTarget);
+    SourceScriptBuilder on(String key, JoinFrom joinFrom);
 
-    SourceScriptBuilder onOr(String key, On.Op op, JoinFrom joinTarget);
+    SourceScriptBuilder on(String key, Op op, JoinFrom joinFrom);
 
+    ConditionCriteriaBuilder more();
+
+    /**
+     * NOT SUPPORT CONDITION(AND|OR) OF lEFT JOIN | RIGHT JOIN
+     *
+     * @param sourceScriptsSplittedList
+     * @return
+     */
     static List<SourceScript> parse(List<String> sourceScriptsSplittedList) {
-
 
         List<SourceScript> list = new ArrayList<>();
 
@@ -41,6 +48,8 @@ public interface SourceScriptBuilder {
         for (int i = 0; i < size; i++) {
             String str = sourceScriptsSplittedList.get(i);
             String strUpper = str.toUpperCase();
+            if (strUpper.equals("AND") || strUpper.equals("OR"))
+                throw new IllegalArgumentException("SourceScript String does not support ON AND | OR, try to call builder.sourceScript()");
 
             if ("from".equals(str.toLowerCase()))
                 continue;
@@ -80,50 +89,38 @@ public interface SourceScriptBuilder {
                     sourceScript.setJoinType(JoinType.COMMA);
                     break;
                 case "ON":
-                    String andOr = "ON";
-                    boolean flag = true;
-                    while (flag) {
-                        String selfKey = sourceScriptsSplittedList.get(++i);
-                        String op = sourceScriptsSplittedList.get(++i);// op
-                        String targetKey = sourceScriptsSplittedList.get(++i);
-                        if (targetKey.startsWith(sourceScript.getSource()) || (sourceScript.getAlia() != null && targetKey.startsWith(sourceScript.getAlia()))) {
-                            String temp = selfKey;
-                            selfKey = targetKey;
-                            targetKey = temp;
-                        }
 
-                        int selfIndex = selfKey.indexOf(".");
-                        int targetIndex = targetKey.indexOf(".");
-
-                        JoinFrom joinFrom = new JoinFrom();
-                        joinFrom.setAlia(targetKey.substring(0, targetIndex));
-                        joinFrom.setKey(targetKey.substring(targetIndex + 1));
-                        On on = new On();
-                        on.setKey(selfKey.substring(selfIndex + 1));
-                        on.setOp(op);
-                        on.setAndOr(andOr);
-                        on.setJoinTarget(joinFrom);
-                        sourceScript.getOnList().add(on);
-
-                        flag = false;
-                        if (i + 1 == size)
-                            return list;
-                        andOr = sourceScriptsSplittedList.get(i + 1).toUpperCase();
-                        if (andOr.equals("AND") || andOr.equals("OR")){
-                            flag = true;
-                            i++;
-                        }
+                    String selfKey = sourceScriptsSplittedList.get(++i);
+                    String op = sourceScriptsSplittedList.get(++i);// op
+                    String fromKey = sourceScriptsSplittedList.get(++i);
+                    if (fromKey.startsWith(sourceScript.getSource()) || (sourceScript.getAlia() != null && fromKey.startsWith(sourceScript.getAlia()))) {
+                        String temp = selfKey;
+                        selfKey = fromKey;
+                        fromKey = temp;
                     }
+
+                    int selfIndex = selfKey.indexOf(".");
+                    int fromIndex = fromKey.indexOf(".");
+
+                    JoinFrom joinFrom = new JoinFrom();
+                    joinFrom.setAlia(fromKey.substring(0, fromIndex));
+                    joinFrom.setKey(fromKey.substring(fromIndex + 1));
+                    On on = new On();
+                    on.setKey(selfKey.substring(selfIndex + 1));
+                    on.setOp(op);
+                    on.setJoinFrom(joinFrom);
+                    sourceScript.setOn(on);
+
                     break;
 
                 default:
-                    if (sourceScript == null){
+                    if (sourceScript == null) {
                         sourceScript = createAndGet(list);
                     }
                     sourceScript.setSource(str);
-                    if (i < size -1){
-                        String tryAlia = sourceScriptsSplittedList.get(i+1);
-                        if (!SqlScript.SOURCE_SCRIPT.contains(tryAlia.toUpperCase())){
+                    if (i < size - 1) {
+                        String tryAlia = sourceScriptsSplittedList.get(i + 1);
+                        if (!SqlScript.SOURCE_SCRIPT.contains(tryAlia.toUpperCase())) {
                             sourceScript.setAlia(tryAlia);
                             i++;
                         }
@@ -136,65 +133,13 @@ public interface SourceScriptBuilder {
     }
 
 
-
-    static Map<String, String> parseAlia(List<String> sourceScriptsSplittedArr) {
-
-        Map<String, String> map = new HashMap<>();
-
-        List<String> list = new ArrayList<>();
-        Set<String> tryAliaSet = new HashSet<>();
-
-        if (sourceScriptsSplittedArr.size() == 1) {
-            map.put(sourceScriptsSplittedArr.get(0), sourceScriptsSplittedArr.get(0));
-            return map;
-        }
-        for (String str : sourceScriptsSplittedArr) {
-            boolean isKeyWord = false;
-
-            for (String kw : SqlScript.SOURCE_SCRIPT) {
-                if (kw.equals(str.toLowerCase())) {
-                    isKeyWord = true;
-                    break;
-                }
-            }
-
-            if (!isKeyWord) {
-                if (str.contains(".")) {
-                    str = str.substring(0, str.indexOf("."));
-                    tryAliaSet.add(str);
-                } else {
-                    if (StringUtil.isNotNull(str)) {
-                        list.add(str);
-                    }
-                }
-            }
-        }
-
-        int size = list.size();
-        for (int i = 0; i < size; i++) {
-            String str = list.get(i);
-            if (tryAliaSet.contains(str)) {
-                map.put(str, str);
-            } else {
-                if (i + 1 < size) {
-                    String alia = list.get(i + 1);
-                    if (tryAliaSet.contains(alia)) ;
-                    map.put(alia, str);
-                    i++;
-                }
-            }
-        }
-
-        return map;
-    }
-
     static List<String> split(String sourceScript) {
-        String[] opArrTwo = {"!=","<>","<=",">="};
-        String[] opArrTwoTemp = {"&ne","&ne","&lte","&gte"};
-        String[] opArrOne = {"=","<",">"};
+        String[] opArrTwo = {"!=", "<>", "<=", ">="};
+        String[] opArrTwoTemp = {"&ne", "&ne", "&lte", "&gte"};
+        String[] opArrOne = {"=", "<", ">"};
 
         boolean flag = false;
-        for (int i=0; i<4; i++){
+        for (int i = 0; i < 4; i++) {
             if (sourceScript.contains(opArrTwo[i])) {
                 flag = true;
                 sourceScript = sourceScript.replace(opArrTwo[i], opArrTwoTemp[i]);
@@ -202,20 +147,20 @@ public interface SourceScriptBuilder {
         }
 
 
-        for (String op : opArrOne ){
+        for (String op : opArrOne) {
             if (sourceScript.contains(op))
-                sourceScript = sourceScript.replace(op," "+op + " ");
+                sourceScript = sourceScript.replace(op, " " + op + " ");
         }
 
-        if (flag){
-            for (int i=0; i<4; i++){
+        if (flag) {
+            for (int i = 0; i < 4; i++) {
                 if (sourceScript.contains(opArrTwoTemp[i]))
                     sourceScript = sourceScript.replace(opArrTwoTemp[i], " " + opArrTwo[i] + " ");
             }
         }
 
-        if (sourceScript.contains(",")){
-            sourceScript = sourceScript.replace(","," , ");
+        if (sourceScript.contains(",")) {
+            sourceScript = sourceScript.replace(",", " , ");
         }
         String[] arr = sourceScript.split(" ");
         List<String> list = new ArrayList<>();

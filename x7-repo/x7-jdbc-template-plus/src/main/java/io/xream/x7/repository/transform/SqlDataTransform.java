@@ -20,6 +20,7 @@ import io.xream.x7.common.bean.Criteria;
 import io.xream.x7.common.bean.RowHandler;
 import io.xream.x7.common.bean.condition.InCondition;
 import io.xream.x7.common.bean.condition.RefreshCondition;
+import io.xream.x7.common.util.ExceptionUtil;
 import io.xream.x7.common.web.Page;
 import io.xream.x7.repository.KeyOne;
 import io.xream.x7.repository.dao.Dao;
@@ -43,23 +44,17 @@ public class SqlDataTransform implements DataTransform {
 
     @Override
     public long create(Object obj) {
-
         return this.dao.create(obj);
-
     }
 
     @Override
     public boolean createOrReplace(Object obj) {
-
         return this.dao.createOrReplace(obj);
-
     }
 
     @Override
     public boolean createBatch(List<?> objList) {
-
         return this.dao.createBatch(objList);
-
     }
 
     @Override
@@ -74,76 +69,65 @@ public class SqlDataTransform implements DataTransform {
 
     @Override
     public <T> boolean refresh(RefreshCondition<T> refreshCondition) {
-
         return this.dao.refreshByCondition(refreshCondition);
-
     }
 
     @Override
     public <T> boolean remove(KeyOne<T> keyOne) {
-
         return this.dao.remove(keyOne);
-
     }
 
 
     @Override
     public <T> boolean execute(T obj, String sql) {
-
         return this.dao.execute(obj, sql);
-
     }
 
 
     @Override
     public <T> List<T> list(Object obj) {
-
         return this.dao.list(obj);
-
     }
 
     @Override
-    public List<Map<String, Object>> list(Class clz, String sql, List<Object> conditionList) {
-        return this.dao.list(clz, sql, conditionList);
+    public List<Map<String, Object>> list(Class clz, String sql, List<Object> conditionSet) {
+        return this.dao.list(clz, sql, conditionSet);
     }
 
     @Override
     public <T> T get(KeyOne<T> keyOne) {//带ID查询, 不需要alia; 不带ID查询,需要alia
-
         return this.dao.get(keyOne);
-
     }
 
 
     @Override
     public <T> List<T> in(InCondition inCondition) {
-
         return this.dao.in(inCondition);
-
     }
 
 
     @Override
     public <T> Page<T> find(Criteria criteria) {
-
         return this.dao.find(criteria);
     }
 
     @Override
-    public Page<Map<String, Object>> find(Criteria.ResultMappedCriteria criteria) {
-
-        return this.dao.find(criteria);
+    public Page<Map<String, Object>> find(Criteria.ResultMappedCriteria resultMapped) {
+        return this.dao.find(resultMapped);
     }
 
     @Override
-    public List<Map<String, Object>> list(Criteria.ResultMappedCriteria criteria) {
+    public List<Map<String, Object>> list(Criteria.ResultMappedCriteria resultMapped) {
+        return this.dao.list(resultMapped);
+    }
 
-        return this.dao.list(criteria);
+    @Override
+    public <K> List<K> listPlainValue(Class<K> clzz, Criteria.ResultMappedCriteria resultMapped){
+        return this.dao.listPlainValue(clzz, resultMapped);
     }
 
     @Override
     public <T> List<T> list(Criteria criteria) {
-
         return this.dao.list(criteria);
     }
 
@@ -156,5 +140,17 @@ public class SqlDataTransform implements DataTransform {
     @Override
     public void findToHandle(Criteria.ResultMappedCriteria resultMappedCriteria, RowHandler<Map<String,Object>> handler) {
         this.dao.findToHandle(resultMappedCriteria,handler);
+    }
+
+    @Override
+    public <T> List<T> listByClzz(Class<T> clzz) {
+
+        T obj = null;
+        try{
+            obj = clzz.newInstance();
+        }catch (Exception e){
+            throw new RuntimeException(ExceptionUtil.getMessage(e));
+        }
+        return this.dao.list(obj);
     }
 }

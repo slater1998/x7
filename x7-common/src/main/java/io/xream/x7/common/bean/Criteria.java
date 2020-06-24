@@ -47,8 +47,6 @@ public class Criteria implements CriteriaCondition, Paged, Routeable,Serializabl
 	@JsonIgnore
 	private transient Parsed parsed;
 	@JsonIgnore
-	private transient boolean isWhere = true;
-	@JsonIgnore
 	private transient List<Object> valueList = new ArrayList<Object>();
 	@JsonIgnore
 	private transient String countDistinct = "COUNT(*) count";
@@ -87,14 +85,6 @@ public class Criteria implements CriteriaCondition, Paged, Routeable,Serializabl
 	}
 	public String getCountDistinct(){
 		return this.countDistinct;
-	}
-
-	public boolean isWhere() {
-		return isWhere;
-	}
-
-	public void setWhere(boolean where) {
-		isWhere = where;
 	}
 
 	public List<Sort> getSortList() {
@@ -220,13 +210,12 @@ public class Criteria implements CriteriaCondition, Paged, Routeable,Serializabl
 		private String sourceScript;
 		private List<SourceScript> sourceScripts = new ArrayList<>();
 		private List<Reduce> reduceList = new ArrayList<>();
+		private boolean isResultWithDottedKey;
+		private boolean isWithoutOptimization;
 		@JsonIgnore
 		private transient PropertyMapping propertyMapping;
 		@JsonIgnore
 		private transient Map<String,String> aliaMap;
-		/*
-		 * only for oracle
-		 */
 		@JsonIgnore
 		private transient Map<String,String> resultKeyAliaMap = new HashMap<>();
 
@@ -300,6 +289,22 @@ public class Criteria implements CriteriaCondition, Paged, Routeable,Serializabl
 			return resultFuntionList;
 		}
 
+		public boolean isResultWithDottedKey() {
+			return isResultWithDottedKey;
+		}
+
+		public void setResultWithDottedKey(boolean resultWithDottedKey) {
+			isResultWithDottedKey = resultWithDottedKey;
+		}
+
+		public boolean isWithoutOptimization() {
+			return isWithoutOptimization;
+		}
+
+		public void setWithoutOptimization(boolean withoutOptimization) {
+			isWithoutOptimization = withoutOptimization;
+		}
+
 		@Override
 		public Class<?> getClz() {
 			return super.clz == null ? Map.class : super.clz;
@@ -348,74 +353,7 @@ public class Criteria implements CriteriaCondition, Paged, Routeable,Serializabl
 					", aliaMap=" + aliaMap +
 					'}';
 		}
+
 	}
-
-	
-	public static class X {
-
-		private ConjunctionAndOtherScript conjunction;
-		private PredicateAndOtherScript predicate;
-		private String key;
-		private Object value;
-		private List<X> subList;
-		private X parent;
-		private transient String script;
-		public X(){}
-		public ConjunctionAndOtherScript getConjunction() {
-			return conjunction;
-		}
-		public void setConjunction(ConjunctionAndOtherScript conjunction) {
-			this.conjunction = conjunction;
-		}
-		public PredicateAndOtherScript getPredicate() {
-			return predicate;
-		}
-		public void setPredicate(PredicateAndOtherScript predicate) {
-			this.predicate = predicate;
-		}
-		public String getKey() {
-			return key;
-		}
-		public void setKey(String key) {
-			this.key = key;
-		}
-		public Object getValue() {
-			return value;
-		}
-		public void setValue(Object value) {
-			this.value = value;
-		}
-		public List<X> getSubList() {
-			return subList;
-		}
-		public void setSubList(List<X> subList) {
-			this.subList = subList;
-		}
-		public X getParent() {
-			return parent;
-		}
-		public void setParent(X parent) {
-			this.parent = parent;
-		}
-		public String getScript() {
-			return script;
-		}
-		public void setScript(String script) {
-			this.script = script;
-		}
-
-		@Override
-		public String toString() {
-			return "X{" +
-					"conjunction=" + conjunction +
-					", predicate=" + predicate +
-					", key=" + key +
-					", value=" + value +
-					", subList=" + subList +
-					", script=" + script +
-					'}';
-		}
-	}
-
 
 }

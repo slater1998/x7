@@ -47,7 +47,7 @@ public interface Dao {
 	<T> List<T> list(Object conditionObj);
 	
 	List<Map<String,Object>>  list(Class clz, String sql,
-			List<Object> conditionList);
+			List<Object> conditionSet);
 
 	<T> T get(KeyOne<T> keyOne);
 	
@@ -56,6 +56,8 @@ public interface Dao {
 	Page<Map<String, Object>> find(Criteria.ResultMappedCriteria resultMapped);
 
 	List<Map<String,Object>> list(Criteria.ResultMappedCriteria resultMapped);
+
+	<K> List<K> listPlainValue(Class<K> clzz, Criteria.ResultMappedCriteria resultMapped);
 
 	<T> Page<T> find(Criteria criteria);
 

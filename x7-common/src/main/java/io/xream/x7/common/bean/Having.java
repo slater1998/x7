@@ -18,23 +18,41 @@ package io.xream.x7.common.bean;
 
 public  class Having {
 
-    private Criteria.X x;
+    private String key;
+    private Op op;
+    private Object value;
 
     private Having() {
     }
 
-    public static Having wrap(PredicateAndOtherScript script, Object value){
+    public static Having of(Op op, Object value){
         Having having = new Having();
-        having.x = new Criteria.X();
-        having.x.setConjunction(ConjunctionAndOtherScript.HAVING);
-        having.x.setPredicate(script);
-        having.x.setValue(value);
+        having.op = op;
+        having.value = value;
         return having;
     }
 
-    protected Criteria.X x() {
-        return x;
+    public String getKey() {
+        return key;
     }
 
+    public void setKey(String key) {
+        this.key = key;
+    }
 
+    public Op getOp() {
+        return op;
+    }
+
+    public void setOp(Op op) {
+        this.op = op;
+    }
+
+    public Object getValue() {
+        return value;
+    }
+
+    public void setValue(Object value) {
+        this.value = value;
+    }
 }

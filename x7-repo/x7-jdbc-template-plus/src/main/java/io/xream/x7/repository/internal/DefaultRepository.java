@@ -19,12 +19,14 @@ package io.xream.x7.repository.internal;
 import io.xream.x7.common.bean.*;
 import io.xream.x7.common.bean.condition.InCondition;
 import io.xream.x7.common.bean.condition.RefreshCondition;
-import io.xream.x7.common.bean.condition.RemoveOrRrefreshOrCreate;
+import io.xream.x7.common.bean.condition.RemoveRefreshCreate;
 import io.xream.x7.common.repository.X;
-import io.xream.x7.common.util.ExceptionUtil;
 import io.xream.x7.common.util.StringUtil;
 import io.xream.x7.common.web.Page;
-import io.xream.x7.repository.*;
+import io.xream.x7.repository.BaseRepository;
+import io.xream.x7.repository.HealthChecker;
+import io.xream.x7.repository.KeyOne;
+import io.xream.x7.repository.Repository;
 import io.xream.x7.repository.exception.CriteriaSyntaxException;
 import io.xream.x7.repository.exception.PersistenceException;
 import io.xream.x7.repository.id.IdGeneratorService;
@@ -81,13 +83,9 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
         this.clz = (Class) params[0];
 
         hook();
-
     }
 
     protected void hook() {
-        if (!EntityHolder.listAll().contains(this.clz)) {
-            EntityHolder.listAll().add(this.clz);
-        }
         if (!HealthChecker.getRepositoryList().contains(this)) {
             HealthChecker.getRepositoryList().add(this);
         }
@@ -106,8 +104,6 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
 
         if (id == 0)
             throw new PersistenceException("UNEXPECTED EXCEPTION WHILE CREATING ID");
-
-        GlobalIdPersistencePolicy.persist(id, clzName);
 
         return id;
     }
@@ -141,12 +137,15 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
 
         if (unSafe) {
             String key = parsed.getKey(X.KEY_ONE);
-            List<Criteria.X> listX = refreshCondition.getListX();
-            for (Criteria.X x : listX) {
-                if (key.equals(x.getKey())) {
+            List<io.xream.x7.common.bean.X> listX = refreshCondition.getListX();
+            for (io.xream.x7.common.bean.X x : listX) {
+                String k = x.getKey();
+                boolean b = k.contains(".") ? k.endsWith("."+key) : key.equals(k);
+                if (b) {
                     Object value = x.getValue();
                     if (Objects.nonNull(value) && !value.toString().equals("0")) {
                         unSafe = false;//Safe
+                        break;
                     }
                 }
             }
@@ -165,8 +164,8 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
     }
 
     @Override
-    public boolean removeOrRefreshOrCreate(RemoveOrRrefreshOrCreate<T> wrapper){
-        return RemoveOrRefreshOrCreateBiz.doIt(this.clz,this.repository,wrapper);
+    public boolean removeRefreshCreate(RemoveRefreshCreate<T> wrapper){
+        return RemoveRefreshCreateBiz.doIt(this.clz,this.repository,wrapper);
     }
 
     @Override
@@ -248,16 +247,7 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
 
     @Override
     public List<T> list() {
-
-        T t = null;
-        try {
-            t = this.clz.newInstance();
-        } catch (InstantiationException e) {
-            throw new RuntimeException(ExceptionUtil.getMessage(e));
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(ExceptionUtil.getMessage(e));
-        }
-        return repository.list(t);
+        return repository.listByClzz(this.clz);
     }
 
     @Override
@@ -313,6 +303,13 @@ public abstract class DefaultRepository<T> implements BaseRepository<T> {
         resultMapped.setClz(this.clz);
         resultMapped.setParsed(Parser.get(this.clz));
         return repository.list(resultMapped);
+    }
+
+    @Override
+    public <K> List<K> listPlainValue(Class<K> clzz, Criteria.ResultMappedCriteria resultMapped){
+        resultMapped.setClz(this.clz);
+        resultMapped.setParsed(Parser.get(this.clz));
+        return repository.listPlainValue(clzz,resultMapped);
     }
 
     @Override

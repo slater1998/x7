@@ -20,7 +20,7 @@ import io.xream.x7.common.bean.Criteria;
 import io.xream.x7.common.bean.RowHandler;
 import io.xream.x7.common.bean.condition.InCondition;
 import io.xream.x7.common.bean.condition.RefreshCondition;
-import io.xream.x7.common.bean.condition.RemoveOrRrefreshOrCreate;
+import io.xream.x7.common.bean.condition.RemoveRefreshCreate;
 import io.xream.x7.common.web.Page;
 
 import java.util.List;
@@ -66,7 +66,7 @@ public interface BaseRepository<T> extends Typed<T> {
      * caution:  sometimes, should not use the api </>
      *
      */
-    boolean removeOrRefreshOrCreate(RemoveOrRrefreshOrCreate<T> RemoveOrRrefreshOrCreate_wrap);
+    boolean removeRefreshCreate(RemoveRefreshCreate<T> RemoveRrefreshCreate_wrap);
     /**
      * @param keyOne
      */
@@ -105,6 +105,8 @@ public interface BaseRepository<T> extends Typed<T> {
     Page<Map<String, Object>> find(Criteria.ResultMappedCriteria CriteriaBuilder_ResultMappedBuilder_build_get);
 
     List<Map<String, Object>> list(Criteria.ResultMappedCriteria CriteriaBuilder_ResultMappedBuilder_build_get);
+
+    <K> List<K> listPlainValue(Class<K> clzz, Criteria.ResultMappedCriteria CriteriaBuilder_ResultMappedBuilder_build_get);
 
     List<T> list(Criteria CriteriaBuilder_build_get);
 
